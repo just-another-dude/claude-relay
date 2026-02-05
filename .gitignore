@@ -1,3 +1,10 @@
+# Node.js
+node_modules/
+package-lock.json
+
+# WhatsApp session data
+.wwebjs_auth/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
