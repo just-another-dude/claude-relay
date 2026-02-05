@@ -101,6 +101,13 @@ function isAuthorized(msg) {
 
             // Check author field for other senders
             const author = (msg.author || '').replace('@c.us', '').replace('@lid', '');
+
+            // SECURITY: Reject if author is empty or missing
+            if (!author) {
+                console.log(`🚫 Ignored (empty author in group)`);
+                return false;
+            }
+
             const isAllowedSender = author.includes(CONFIG.allowedNumber) ||
                                     CONFIG.allowedNumber.includes(author);
             if (!isAllowedSender) {

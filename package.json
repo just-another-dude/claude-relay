@@ -4,7 +4,9 @@
   "description": "WhatsApp → Claude Code bridge for mobile control",
   "main": "src/whatsapp.js",
   "scripts": {
-    "start": "node src/whatsapp.js"
+    "start": "node src/whatsapp.js",
+    "test": "node tests/test_whatsapp.js",
+    "test:py": "python3 tests/test_bridge.py"
   },
   "dependencies": {
     "dotenv": "^16.4.0",
