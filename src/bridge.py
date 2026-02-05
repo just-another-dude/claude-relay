@@ -266,10 +266,7 @@ class ClaudeCodeBridge:
         return f"Sent: continue\n\nRecent output:\n{output[-500:]}"
 
     def change_directory(self, path: str) -> str:
-        """Change working directory for Claude Code"""
-        if not self.ensure_session():
-            return "❌ Failed to start Claude Code session"
-
+        """Change working directory for Claude Code by restarting in new location"""
         # Expand user home directory
         expanded_path = os.path.expanduser(path)
 
@@ -289,12 +286,26 @@ class ClaudeCodeBridge:
                 matches = "\n".join([f"  • {p}" for p in found_paths[:10]])
                 return f"📂 Multiple matches for '{path}':\n\n{matches}\n\nUse full path: /cd <path>"
 
-        # Send /cd command to Claude Code (Claude Code's built-in command)
-        self.tmux.send_keys(f"/cd {target_path}")
-        time.sleep(1)
+        # Kill existing session and restart in new directory
+        if self.tmux.exists():
+            # Send exit to Claude Code first
+            self.tmux.send_keys("/exit", enter=True)
+            time.sleep(1)
+            # Kill the tmux session
+            self.tmux.kill()
+            time.sleep(0.5)
+
+        # Create new session in target directory
+        if not self.tmux.create(workspace=target_path):
+            return f"❌ Failed to create session in {target_path}"
+
+        # Start Claude Code
+        time.sleep(0.5)
+        self.tmux.send_keys("claude")
+        time.sleep(3)  # Wait for Claude to start
 
         output = self.tmux.capture_pane(20)
-        return f"📂 Changed directory to: {target_path}\n\nRecent output:\n{output[-400:]}"
+        return f"📂 Started Claude Code in: {target_path}\n\nRecent output:\n{output[-400:]}"
 
     def _find_directory(self, name: str) -> list[str]:
         """Search for a directory by name in common locations"""
