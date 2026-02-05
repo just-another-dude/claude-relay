@@ -721,10 +721,11 @@ Current workspace info will be provided with each request."""
                 return self.bridge.send_prompt(tool_input["prompt"])
 
             elif tool_name == "run_shell_command":
+                # Shell command execution - intentional for supervisor to run user commands
                 timeout = tool_input.get("timeout", 30)
-                result = subprocess.run(  # noqa: S602 - shell=True intentional for supervisor
+                result = subprocess.run(
                     tool_input["command"],
-                    shell=True,
+                    shell=True,  # noqa: S602  # nosec B602
                     capture_output=True,
                     text=True,
                     timeout=timeout,
