@@ -25,24 +25,30 @@ except ImportError:
 
 class Config:
     """Configuration from environment"""
-    
+
     # Anthropic API key for direct API calls
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
-    
+
     # Model for direct API calls
     API_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-20250514')
-    
+
     # tmux session name for Claude Code
     TMUX_SESSION = os.environ.get('TMUX_SESSION', 'claude-relay')
-    
+
     # Working directory for Claude Code
     WORKSPACE = os.environ.get('CLAUDE_WORKSPACE', os.path.expanduser('~/claude-workspace'))
-    
+
     # Timeout for reading tmux output
     READ_TIMEOUT = int(os.environ.get('READ_TIMEOUT', '30'))
-    
+
     # Max output length
     MAX_OUTPUT = int(os.environ.get('MAX_OUTPUT', '3000'))
+
+    # Path to audio transcriber
+    TRANSCRIBER_PATH = os.environ.get('TRANSCRIBER_PATH', os.path.expanduser('~/git/audio-transcriber'))
+
+    # Transcription engine (whisper, google, vosk)
+    TRANSCRIBER_ENGINE = os.environ.get('TRANSCRIBER_ENGINE', 'google')
 
 
 class TmuxSession:
@@ -300,6 +306,60 @@ class ClaudeCodeBridge:
         return '\n'.join(lines)
 
 
+class AudioTranscriber:
+    """Transcribe audio files using audio-transcriber"""
+
+    def __init__(self):
+        self.transcriber_path = Path(Config.TRANSCRIBER_PATH)
+        self.engine = Config.TRANSCRIBER_ENGINE
+
+    def transcribe(self, audio_path: str) -> str:
+        """Transcribe an audio file to text"""
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
+            return f"❌ Audio file not found: {audio_path}"
+
+        transcriber_script = self.transcriber_path / 'transcribe.py'
+        if not transcriber_script.exists():
+            return f"❌ Transcriber not found at {transcriber_script}"
+
+        try:
+            result = subprocess.run(
+                [
+                    'python3', str(transcriber_script),
+                    str(audio_file),
+                    '--engine', self.engine,
+                    '--output-format', 'txt'
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,  # 2 minute timeout for transcription
+                cwd=str(self.transcriber_path)
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+                return f"❌ Transcription failed: {error_msg}"
+
+            # The transcriber outputs to a .txt file, read it
+            output_file = audio_file.with_suffix('.txt')
+            if output_file.exists():
+                text = output_file.read_text().strip()
+                # Clean up the output file
+                output_file.unlink()
+                return text
+            else:
+                # Try to extract from stdout if file wasn't created
+                if result.stdout.strip():
+                    return result.stdout.strip()
+                return "❌ Transcription produced no output"
+
+        except subprocess.TimeoutExpired:
+            return "❌ Transcription timed out"
+        except Exception as e:
+            return f"❌ Transcription error: {str(e)}"
+
+
 class AnthropicAPI:
     """Direct Anthropic API calls"""
     
@@ -377,7 +437,15 @@ def main():
         elif command == 'stop':
             bridge = ClaudeCodeBridge()
             response = bridge.stop()
-        
+
+        elif command == 'transcribe':
+            audio_path = input_data.get('audio_path', '')
+            if not audio_path:
+                response = "No audio path provided"
+            else:
+                transcriber = AudioTranscriber()
+                response = transcriber.transcribe(audio_path)
+
         else:
             response = f"Unknown command: {command}"
         

@@ -9,6 +9,7 @@ const qrcode = require('qrcode-terminal');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 require('dotenv').config();
 
@@ -237,6 +238,48 @@ function formatResponse(text) {
 }
 
 /**
+ * Handle voice message - download, transcribe, and return text
+ */
+async function handleVoiceMessage(msg) {
+    try {
+        // Download the media
+        const media = await msg.downloadMedia();
+        if (!media) {
+            return { success: false, error: 'Failed to download voice message' };
+        }
+
+        // Save to temp file
+        const tempDir = os.tmpdir();
+        const tempFile = path.join(tempDir, `voice_${Date.now()}.ogg`);
+
+        // Write base64 data to file
+        const buffer = Buffer.from(media.data, 'base64');
+        fs.writeFileSync(tempFile, buffer);
+
+        console.log(`   📁 Saved voice message to ${tempFile}`);
+
+        // Transcribe
+        const result = await callBridge('transcribe', { audio_path: tempFile });
+
+        // Clean up temp file
+        try {
+            fs.unlinkSync(tempFile);
+        } catch (e) {
+            console.log(`   ⚠️ Failed to clean up temp file: ${e.message}`);
+        }
+
+        if (result.error) {
+            return { success: false, error: result.error };
+        }
+
+        return { success: true, text: result.response };
+
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Get help text
  */
 function getHelp() {
@@ -248,8 +291,11 @@ continue - Continue current task
 1 or yes - Approve pending action
 2 or no - Reject pending action
 
-*Direct API (Opus 4.5):*
+*Direct API:*
 /ask <question> - Quick question
+
+*Voice Messages:*
+🎤 Send a voice note → transcribed & sent to Claude Code
 
 *System:*
 /status - Session status
@@ -324,6 +370,45 @@ client.on('message_create', async (msg) => {
 
     // Check authorization (must be from self, optionally in specific group)
     if (!isAuthorized(msg)) {
+        return;
+    }
+
+    // Handle voice messages
+    if (msg.hasMedia && (msg.type === 'ptt' || msg.type === 'audio')) {
+        console.log(`\n🎤 Voice message from ${msg.from}`);
+
+        const transcribePending = await msg.reply('🎤 Transcribing voice message...');
+        if (transcribePending?.id?._serialized) sentReplies.add(transcribePending.id._serialized);
+
+        const voiceResult = await handleVoiceMessage(msg);
+
+        if (!voiceResult.success) {
+            const errMsg = await msg.reply(`❌ Transcription failed: ${voiceResult.error}`);
+            if (errMsg?.id?._serialized) sentReplies.add(errMsg.id._serialized);
+            return;
+        }
+
+        const transcribedText = voiceResult.text;
+        console.log(`   📝 Transcribed: "${transcribedText.slice(0, 100)}${transcribedText.length > 100 ? '...' : ''}"`);
+
+        // Send transcription confirmation
+        const confirmMsg = await msg.reply(`📝 *Transcribed:* ${transcribedText}\n\n⚙️ Sending to Claude Code...`);
+        if (confirmMsg?.id?._serialized) sentReplies.add(confirmMsg.id._serialized);
+
+        // Send to Claude Code
+        try {
+            const ccResult = await callBridge('claude-code', { prompt: transcribedText });
+            const response = ccResult.response;
+
+            const sentMsg = await msg.reply(formatResponse(response));
+            if (sentMsg?.id?._serialized) sentReplies.add(sentMsg.id._serialized);
+            console.log('   ✅ Response sent');
+        } catch (error) {
+            console.error('   ❌ Error:', error.message);
+            const errMsg = await msg.reply(`❌ Error: ${error.message}`);
+            if (errMsg?.id?._serialized) sentReplies.add(errMsg.id._serialized);
+        }
+
         return;
     }
 
