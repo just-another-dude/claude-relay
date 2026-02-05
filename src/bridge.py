@@ -267,8 +267,8 @@ class ClaudeCodeBridge:
 
     def change_directory(self, path: str) -> str:
         """Change working directory for Claude Code"""
-        if not self.tmux.exists():
-            return "No active session"
+        if not self.ensure_session():
+            return "❌ Failed to start Claude Code session"
 
         # Expand user home directory
         expanded_path = os.path.expanduser(path)
@@ -347,8 +347,8 @@ class ClaudeCodeBridge:
 
     def get_working_directory(self) -> str:
         """Get current working directory from Claude Code"""
-        if not self.tmux.exists():
-            return "No active session"
+        if not self.ensure_session():
+            return "❌ Failed to start Claude Code session"
 
         # Send pwd command to see current directory
         # We'll capture the pane and look for directory indicators
