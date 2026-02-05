@@ -85,6 +85,33 @@ class TmuxSession:
         time.sleep(0.5)
         return True
 
+    @staticmethod
+    def list_sessions() -> list[dict[str, str]]:
+        """List all tmux sessions"""
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}:#{session_path}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return []
+
+        sessions = []
+        for line in result.stdout.strip().split("\n"):
+            if ":" in line:
+                name, path = line.split(":", 1)
+                sessions.append({"name": name, "path": path})
+        return sessions
+
+    @staticmethod
+    def session_name_from_path(path: str) -> str:
+        """Generate a valid tmux session name from a path"""
+        # Use the last directory component, sanitized for tmux
+        name = os.path.basename(path.rstrip("/"))
+        # tmux doesn't like dots and colons in session names
+        name = name.replace(".", "-").replace(":", "-")
+        return f"cc-{name}" if name else "cc-default"
+
     def send_keys(self, keys: str, enter: bool = True) -> bool:
         """Send keys to tmux pane"""
         if not self.exists():
@@ -159,19 +186,45 @@ class TmuxSession:
 class ClaudeCodeBridge:
     """Interface with Claude Code CLI"""
 
-    def __init__(self):
-        self.tmux = TmuxSession()
+    # Track current active session (class-level for persistence across calls)
+    _current_session_name: str = Config.TMUX_SESSION
+    _current_workspace: str = Config.WORKSPACE
 
-    def ensure_session(self) -> bool:
+    def __init__(self, session_name: str | None = None, workspace: str | None = None):
+        # Use provided session or fall back to class-level current session
+        if session_name:
+            self._current_session_name = session_name
+            ClaudeCodeBridge._current_session_name = session_name
+        if workspace:
+            self._current_workspace = workspace
+            ClaudeCodeBridge._current_workspace = workspace
+
+        self.tmux = TmuxSession(self._current_session_name)
+
+    def ensure_session(self, use_continue: bool = True) -> bool:
         """Ensure Claude Code session is running"""
         if not self.tmux.exists():
-            if not self.tmux.create():
+            if not self.tmux.create(self._current_workspace):
                 return False
-            # Start Claude Code
+            # Start Claude Code with --continue to resume previous conversation
             time.sleep(0.5)
-            self.tmux.send_keys("claude")
-            time.sleep(2)  # Wait for Claude to start
+            if use_continue:
+                self.tmux.send_keys("claude --continue")
+            else:
+                self.tmux.send_keys("claude")
+            time.sleep(3)  # Wait for Claude to start
         return True
+
+    @classmethod
+    def get_current_session(cls) -> tuple[str, str]:
+        """Get current session name and workspace"""
+        return cls._current_session_name, cls._current_workspace
+
+    @classmethod
+    def set_current_session(cls, session_name: str, workspace: str):
+        """Set current session name and workspace"""
+        cls._current_session_name = session_name
+        cls._current_workspace = workspace
 
     def send_prompt(self, prompt: str) -> str:
         """Send prompt to Claude Code and get response"""
@@ -266,7 +319,7 @@ class ClaudeCodeBridge:
         return f"Sent: continue\n\nRecent output:\n{output[-500:]}"
 
     def change_directory(self, path: str) -> str:
-        """Change working directory for Claude Code by restarting in new location"""
+        """Switch to a project directory (creates or resumes session)"""
         # Expand user home directory
         expanded_path = os.path.expanduser(path)
 
@@ -286,22 +339,25 @@ class ClaudeCodeBridge:
                 matches = "\n".join([f"  • {p}" for p in found_paths[:10]])
                 return f"📂 Multiple matches for '{path}':\n\n{matches}\n\nUse full path: /cd <path>"
 
-        # Kill existing session and restart in new directory
+        # Generate session name for this project
+        session_name = TmuxSession.session_name_from_path(target_path)
+
+        # Update current session tracking
+        ClaudeCodeBridge.set_current_session(session_name, target_path)
+        self.tmux = TmuxSession(session_name)
+
+        # Check if session already exists (persistent session)
         if self.tmux.exists():
-            # Send exit to Claude Code first
-            self.tmux.send_keys("/exit", enter=True)
-            time.sleep(1)
-            # Kill the tmux session
-            self.tmux.kill()
-            time.sleep(0.5)
+            output = self.tmux.capture_pane(20)
+            return f"📂 Switched to existing session: {session_name}\nPath: {target_path}\n\nRecent output:\n{output[-400:]}"
 
         # Create new session in target directory
         if not self.tmux.create(workspace=target_path):
             return f"❌ Failed to create session in {target_path}"
 
-        # Start Claude Code
+        # Start Claude Code with --continue to resume any previous conversation
         time.sleep(0.5)
-        self.tmux.send_keys("claude")
+        self.tmux.send_keys("claude --continue")
         time.sleep(3)  # Wait for Claude to start
 
         output = self.tmux.capture_pane(20)
@@ -357,17 +413,43 @@ class ClaudeCodeBridge:
         return unique
 
     def get_working_directory(self) -> str:
-        """Get current working directory from Claude Code"""
-        if not self.ensure_session():
-            return "❌ Failed to start Claude Code session"
+        """Get current session and directory info"""
+        session_name, workspace = ClaudeCodeBridge.get_current_session()
 
-        # Send pwd command to see current directory
-        # We'll capture the pane and look for directory indicators
-        output = self.tmux.capture_pane(30)
+        lines = [
+            f"📂 *Current Session*",
+            f"Session: {session_name}",
+            f"Workspace: {workspace}",
+            f"Status: {'🟢 Running' if self.tmux.exists() else '⚪ Not started'}",
+        ]
 
-        # Try to find current path from prompt or output
-        # Claude Code shows the path in its interface
-        return f"📂 Current session info:\n\n{output[-600:]}"
+        if self.tmux.exists():
+            output = self.tmux.capture_pane(20)
+            lines.append(f"\nRecent output:\n{output[-400:]}")
+
+        return "\n".join(lines)
+
+    def list_sessions(self) -> str:
+        """List all Claude Code sessions"""
+        sessions = TmuxSession.list_sessions()
+
+        # Filter to only cc-* sessions (Claude Code sessions)
+        cc_sessions = [s for s in sessions if s["name"].startswith("cc-")]
+
+        if not cc_sessions:
+            return "📂 No active Claude Code sessions.\n\nUse /cd <project> to start one."
+
+        current_session, _ = ClaudeCodeBridge.get_current_session()
+
+        lines = ["📂 *Active Sessions*\n"]
+        for s in cc_sessions:
+            marker = "→ " if s["name"] == current_session else "  "
+            lines.append(f"{marker}{s['name']}")
+
+        lines.append(f"\nCurrent: {current_session}")
+        lines.append("\nUse /cd <project> to switch sessions")
+
+        return "\n".join(lines)
 
     def stop(self) -> str:
         """Send Ctrl+C to stop current operation"""
@@ -552,6 +634,10 @@ def main():
         elif command == "pwd":
             bridge = ClaudeCodeBridge()
             response = bridge.get_working_directory()
+
+        elif command == "sessions":
+            bridge = ClaudeCodeBridge()
+            response = bridge.list_sessions()
 
         elif command == "transcribe":
             audio_path = input_data.get("audio_path", "")

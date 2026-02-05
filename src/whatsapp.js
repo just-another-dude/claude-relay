@@ -284,6 +284,9 @@ function parseCommand(text) {
     if (trimmed.startsWith('/pwd')) {
         return { type: 'pwd', content: '' };
     }
+    if (trimmed.startsWith('/sessions')) {
+        return { type: 'sessions', content: '' };
+    }
     if (trimmed === '1' || trimmed.toLowerCase() === 'yes' || trimmed.toLowerCase() === 'approve') {
         return { type: 'approve', content: 'yes' };
     }
@@ -371,8 +374,9 @@ continue - Continue current task
 🎤 Send a voice note → transcribed & sent to Claude Code
 
 *Navigation:*
-/cd <path> - Change working directory
+/cd <project> - Switch to project (creates or resumes session)
 /pwd - Show current session info
+/sessions - List all active sessions
 
 *System:*
 /status - Session status
@@ -604,6 +608,11 @@ client.on('message_create', async (msg) => {
             case 'pwd':
                 const pwdResult = await callBridge('pwd');
                 response = pwdResult.response;
+                break;
+
+            case 'sessions':
+                const sessionsResult = await callBridge('sessions');
+                response = sessionsResult.response;
                 break;
 
             default:
