@@ -6,15 +6,17 @@ Run with: python3 -m pytest tests/test_bridge.py -v
 Or simply: python3 tests/test_bridge.py
 """
 
-import unittest
 import json
 import os
+import subprocess
 import sys
-from unittest.mock import Mock, patch, MagicMock
+import unittest
 from io import StringIO
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 class TestConfig(unittest.TestCase):
@@ -22,21 +24,26 @@ class TestConfig(unittest.TestCase):
 
     def test_config_uses_environment_variables(self):
         """Config should read from environment variables"""
-        with patch.dict(os.environ, {
-            'ANTHROPIC_API_KEY': 'test-key',
-            'CLAUDE_MODEL': 'test-model',
-            'TMUX_SESSION': 'test-session',
-            'READ_TIMEOUT': '45',
-            'MAX_OUTPUT': '5000'
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ANTHROPIC_API_KEY": "test-key",
+                "CLAUDE_MODEL": "test-model",
+                "TMUX_SESSION": "test-session",
+                "READ_TIMEOUT": "45",
+                "MAX_OUTPUT": "5000",
+            },
+        ):
             # Re-import to pick up new env vars
             import importlib
+
             import bridge
+
             importlib.reload(bridge)
 
-            self.assertEqual(bridge.Config.ANTHROPIC_API_KEY, 'test-key')
-            self.assertEqual(bridge.Config.API_MODEL, 'test-model')
-            self.assertEqual(bridge.Config.TMUX_SESSION, 'test-session')
+            self.assertEqual(bridge.Config.ANTHROPIC_API_KEY, "test-key")
+            self.assertEqual(bridge.Config.API_MODEL, "test-model")
+            self.assertEqual(bridge.Config.TMUX_SESSION, "test-session")
             self.assertEqual(bridge.Config.READ_TIMEOUT, 45)
             self.assertEqual(bridge.Config.MAX_OUTPUT, 5000)
 
@@ -44,10 +51,12 @@ class TestConfig(unittest.TestCase):
         """Config should have sensible defaults when env vars not set"""
         with patch.dict(os.environ, {}, clear=True):
             import importlib
+
             import bridge
+
             importlib.reload(bridge)
 
-            self.assertEqual(bridge.Config.TMUX_SESSION, 'claude-relay')
+            self.assertEqual(bridge.Config.TMUX_SESSION, "claude-relay")
             self.assertEqual(bridge.Config.READ_TIMEOUT, 30)
             self.assertEqual(bridge.Config.MAX_OUTPUT, 3000)
 
@@ -58,9 +67,10 @@ class TestTmuxSession(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import bridge
-        self.tmux = bridge.TmuxSession('test-session')
 
-    @patch('subprocess.run')
+        self.tmux = bridge.TmuxSession("test-session")
+
+    @patch("subprocess.run")
     def test_exists_returns_true_when_session_exists(self, mock_run):
         """exists() should return True when tmux session exists"""
         mock_run.return_value = Mock(returncode=0)
@@ -70,9 +80,9 @@ class TestTmuxSession(unittest.TestCase):
         self.assertTrue(result)
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
-        self.assertIn('has-session', call_args)
+        self.assertIn("has-session", call_args)
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_exists_returns_false_when_session_missing(self, mock_run):
         """exists() should return False when tmux session doesn't exist"""
         mock_run.return_value = Mock(returncode=1)
@@ -81,7 +91,7 @@ class TestTmuxSession(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_capture_pane_returns_no_session_when_missing(self, mock_run):
         """capture_pane() should return error message when session missing"""
         mock_run.return_value = Mock(returncode=1)
@@ -90,39 +100,39 @@ class TestTmuxSession(unittest.TestCase):
 
         self.assertEqual(result, "(no session)")
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_send_keys_uses_literal_flag(self, mock_run):
         """send_keys() should use -l flag for literal text"""
         mock_run.return_value = Mock(returncode=0)
         self.tmux.exists = Mock(return_value=True)
 
-        self.tmux.send_keys('test message')
+        self.tmux.send_keys("test message")
 
         # Should be called twice: once for text, once for Enter
         self.assertEqual(mock_run.call_count, 2)
         first_call = mock_run.call_args_list[0][0][0]
-        self.assertIn('-l', first_call)
-        self.assertIn('test message', first_call)
+        self.assertIn("-l", first_call)
+        self.assertIn("test message", first_call)
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_send_keys_sends_enter_separately(self, mock_run):
         """send_keys() should send Enter as separate command"""
         mock_run.return_value = Mock(returncode=0)
         self.tmux.exists = Mock(return_value=True)
 
-        self.tmux.send_keys('test', enter=True)
+        self.tmux.send_keys("test", enter=True)
 
         self.assertEqual(mock_run.call_count, 2)
         second_call = mock_run.call_args_list[1][0][0]
-        self.assertIn('Enter', second_call)
+        self.assertIn("Enter", second_call)
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_send_keys_skips_enter_when_disabled(self, mock_run):
         """send_keys() should not send Enter when enter=False"""
         mock_run.return_value = Mock(returncode=0)
         self.tmux.exists = Mock(return_value=True)
 
-        self.tmux.send_keys('test', enter=False)
+        self.tmux.send_keys("test", enter=False)
 
         self.assertEqual(mock_run.call_count, 1)
 
@@ -133,51 +143,52 @@ class TestClaudeCodeBridge(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import bridge
+
         self.bridge = bridge.ClaudeCodeBridge()
 
     def test_send_approval_accepts_yes_variants(self):
         """send_approval() should accept various 'yes' inputs"""
-        yes_variants = ['yes', 'YES', 'Yes', '1', 'y', 'Y', 'approve', 'APPROVE']
+        yes_variants = ["yes", "YES", "Yes", "1", "y", "Y", "approve", "APPROVE"]
 
         for variant in yes_variants:
-            with patch.object(self.bridge.tmux, 'exists', return_value=True):
-                with patch.object(self.bridge.tmux, 'send_keys') as mock_send:
-                    with patch.object(self.bridge.tmux, 'capture_pane', return_value=''):
+            with patch.object(self.bridge.tmux, "exists", return_value=True):
+                with patch.object(self.bridge.tmux, "send_keys") as mock_send:
+                    with patch.object(self.bridge.tmux, "capture_pane", return_value=""):
                         self.bridge.send_approval(variant)
-                        mock_send.assert_called_with('1')
+                        mock_send.assert_called_with("1")
 
     def test_send_approval_accepts_no_variants(self):
         """send_approval() should accept various 'no' inputs"""
-        no_variants = ['no', 'NO', 'No', '2', 'n', 'reject', 'REJECT']
+        no_variants = ["no", "NO", "No", "2", "n", "reject", "REJECT"]
 
         for variant in no_variants:
-            with patch.object(self.bridge.tmux, 'exists', return_value=True):
-                with patch.object(self.bridge.tmux, 'send_keys') as mock_send:
-                    with patch.object(self.bridge.tmux, 'capture_pane', return_value=''):
+            with patch.object(self.bridge.tmux, "exists", return_value=True):
+                with patch.object(self.bridge.tmux, "send_keys") as mock_send:
+                    with patch.object(self.bridge.tmux, "capture_pane", return_value=""):
                         self.bridge.send_approval(variant)
-                        mock_send.assert_called_with('2')
+                        mock_send.assert_called_with("2")
 
     def test_send_approval_returns_error_when_no_session(self):
         """send_approval() should return error when no session exists"""
-        with patch.object(self.bridge.tmux, 'exists', return_value=False):
-            result = self.bridge.send_approval('yes')
+        with patch.object(self.bridge.tmux, "exists", return_value=False):
+            result = self.bridge.send_approval("yes")
             self.assertEqual(result, "No active session")
 
     def test_stop_sends_ctrl_c(self):
         """stop() should send Ctrl+C to tmux"""
-        with patch.object(self.bridge.tmux, 'exists', return_value=True):
-            with patch('subprocess.run') as mock_run:
+        with patch.object(self.bridge.tmux, "exists", return_value=True):
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(returncode=0)
 
                 result = self.bridge.stop()
 
-                self.assertIn('Stop signal sent', result)
+                self.assertIn("Stop signal sent", result)
                 call_args = mock_run.call_args[0][0]
-                self.assertIn('C-c', call_args)
+                self.assertIn("C-c", call_args)
 
     def test_stop_returns_error_when_no_session(self):
         """stop() should return error when no session exists"""
-        with patch.object(self.bridge.tmux, 'exists', return_value=False):
+        with patch.object(self.bridge.tmux, "exists", return_value=False):
             result = self.bridge.stop()
             self.assertEqual(result, "No active session")
 
@@ -188,6 +199,7 @@ class TestResponseExtraction(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         import bridge
+
         self.bridge = bridge.ClaudeCodeBridge()
 
     def test_extract_response_finds_new_lines(self):
@@ -227,59 +239,61 @@ class TestMainEntryPoint(unittest.TestCase):
         """main() should return error for invalid JSON input"""
         import bridge
 
-        with patch('sys.stdin', StringIO('not valid json')):
-            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+        with patch("sys.stdin", StringIO("not valid json")):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                 with self.assertRaises(SystemExit) as context:
                     bridge.main()
 
                 self.assertEqual(context.exception.code, 1)
                 output = mock_stdout.getvalue()
-                self.assertIn('error', output.lower())
+                self.assertIn("error", output.lower())
 
     def test_main_handles_unknown_command(self):
         """main() should handle unknown commands gracefully"""
         import bridge
 
-        with patch('sys.stdin', StringIO('{"command": "unknown_command"}')):
-            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+        with patch("sys.stdin", StringIO('{"command": "unknown_command"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                 bridge.main()
 
                 output = json.loads(mock_stdout.getvalue())
-                self.assertIn('Unknown command', output.get('response', ''))
+                self.assertIn("Unknown command", output.get("response", ""))
 
     def test_main_handles_status_command(self):
         """main() should handle status command"""
         import bridge
 
-        with patch('sys.stdin', StringIO('{"command": "status"}')):
-            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
-                with patch.object(bridge.ClaudeCodeBridge, 'get_status', return_value='test status'):
+        with patch("sys.stdin", StringIO('{"command": "status"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                with patch.object(
+                    bridge.ClaudeCodeBridge, "get_status", return_value="test status"
+                ):
                     bridge.main()
 
                     output = json.loads(mock_stdout.getvalue())
-                    self.assertEqual(output.get('response'), 'test status')
+                    self.assertEqual(output.get("response"), "test status")
 
     def test_main_requires_prompt_for_claude_code(self):
         """main() should require prompt for claude-code command"""
         import bridge
 
-        with patch('sys.stdin', StringIO('{"command": "claude-code"}')):
-            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+        with patch("sys.stdin", StringIO('{"command": "claude-code"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                 bridge.main()
 
                 output = json.loads(mock_stdout.getvalue())
-                self.assertIn('No prompt', output.get('response', ''))
+                self.assertIn("No prompt", output.get("response", ""))
 
     def test_main_requires_prompt_for_api(self):
         """main() should require prompt for api command"""
         import bridge
 
-        with patch('sys.stdin', StringIO('{"command": "api"}')):
-            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+        with patch("sys.stdin", StringIO('{"command": "api"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                 bridge.main()
 
                 output = json.loads(mock_stdout.getvalue())
-                self.assertIn('No prompt', output.get('response', ''))
+                self.assertIn("No prompt", output.get("response", ""))
 
 
 class TestSecurityBoundaries(unittest.TestCase):
@@ -288,14 +302,15 @@ class TestSecurityBoundaries(unittest.TestCase):
     def test_prompt_with_shell_metacharacters_is_escaped(self):
         """Prompts with shell metacharacters should be handled safely"""
         import bridge
+
         bridge_instance = bridge.ClaudeCodeBridge()
 
         dangerous_prompt = '$(rm -rf /); `whoami`; echo "pwned"'
 
-        with patch.object(bridge_instance.tmux, 'exists', return_value=True):
-            with patch.object(bridge_instance.tmux, 'send_keys') as mock_send:
-                with patch.object(bridge_instance.tmux, 'capture_pane', return_value=''):
-                    with patch('time.sleep'):
+        with patch.object(bridge_instance.tmux, "exists", return_value=True):
+            with patch.object(bridge_instance.tmux, "send_keys") as mock_send:
+                with patch.object(bridge_instance.tmux, "capture_pane", return_value=""):
+                    with patch("time.sleep"):
                         # Should not raise
                         bridge_instance.send_prompt(dangerous_prompt)
 
@@ -305,15 +320,16 @@ class TestSecurityBoundaries(unittest.TestCase):
     def test_max_output_prevents_memory_exhaustion(self):
         """Output should be truncated to MAX_OUTPUT to prevent memory issues"""
         import bridge
+
         bridge_instance = bridge.ClaudeCodeBridge()
 
-        huge_output = 'x' * 100000
+        huge_output = "x" * 100000
 
-        with patch.object(bridge_instance, 'ensure_session', return_value=True):
-            with patch.object(bridge_instance.tmux, 'capture_pane', return_value=huge_output):
-                with patch.object(bridge_instance.tmux, 'send_keys'):
-                    with patch('time.sleep'):
-                        result = bridge_instance.send_prompt('test')
+        with patch.object(bridge_instance, "ensure_session", return_value=True):
+            with patch.object(bridge_instance.tmux, "capture_pane", return_value=huge_output):
+                with patch.object(bridge_instance.tmux, "send_keys"):
+                    with patch("time.sleep"):
+                        result = bridge_instance.send_prompt("test")
 
                         # Result should be truncated
                         self.assertLessEqual(len(result), bridge.Config.MAX_OUTPUT + 50)
@@ -322,10 +338,11 @@ class TestSecurityBoundaries(unittest.TestCase):
         """API key should never appear in responses or logs"""
         import bridge
 
-        test_key = 'sk-ant-secret-test-key-12345'
+        test_key = "sk-ant-secret-test-key-12345"
 
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': test_key}):
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": test_key}):
             import importlib
+
             importlib.reload(bridge)
 
             # Get status should not expose key
@@ -333,7 +350,7 @@ class TestSecurityBoundaries(unittest.TestCase):
             status = bridge_instance.get_status()
 
             self.assertNotIn(test_key, status)
-            self.assertNotIn('sk-ant', status)
+            self.assertNotIn("sk-ant", status)
 
 
 class TestInputValidation(unittest.TestCase):
@@ -342,44 +359,153 @@ class TestInputValidation(unittest.TestCase):
     def test_empty_prompt_is_rejected(self):
         """Empty prompts should be rejected"""
         import bridge
+
         bridge_instance = bridge.ClaudeCodeBridge()
 
-        with patch.object(bridge_instance, 'ensure_session', return_value=True):
+        with patch.object(bridge_instance, "ensure_session", return_value=True):
             # Empty string
-            result = bridge_instance.send_prompt('')
+            result = bridge_instance.send_prompt("")
             # Should handle gracefully (implementation may vary)
             self.assertIsInstance(result, str)
 
     def test_whitespace_only_prompt_is_handled(self):
         """Whitespace-only prompts should be handled"""
         import bridge
+
         bridge_instance = bridge.ClaudeCodeBridge()
 
-        with patch.object(bridge_instance, 'ensure_session', return_value=True):
-            with patch.object(bridge_instance.tmux, 'send_keys'):
-                with patch.object(bridge_instance.tmux, 'capture_pane', return_value=''):
-                    with patch('time.sleep'):
-                        result = bridge_instance.send_prompt('   \n\t  ')
+        with patch.object(bridge_instance, "ensure_session", return_value=True):
+            with patch.object(bridge_instance.tmux, "send_keys"):
+                with patch.object(bridge_instance.tmux, "capture_pane", return_value=""):
+                    with patch("time.sleep"):
+                        result = bridge_instance.send_prompt("   \n\t  ")
                         self.assertIsInstance(result, str)
 
     def test_unicode_prompt_is_handled(self):
         """Unicode prompts should be handled correctly"""
         import bridge
+
         bridge_instance = bridge.ClaudeCodeBridge()
 
-        unicode_prompt = '修复错误 🐛 émojis работает'
+        unicode_prompt = "修复错误 🐛 émojis работает"
 
-        with patch.object(bridge_instance, 'ensure_session', return_value=True):
-            with patch.object(bridge_instance.tmux, 'send_keys') as mock_send:
-                with patch.object(bridge_instance.tmux, 'capture_pane', return_value=''):
-                    with patch('time.sleep'):
+        with patch.object(bridge_instance, "ensure_session", return_value=True):
+            with patch.object(bridge_instance.tmux, "send_keys") as mock_send:
+                with patch.object(bridge_instance.tmux, "capture_pane", return_value=""):
+                    with patch("time.sleep"):
                         bridge_instance.send_prompt(unicode_prompt)
 
                         # Verify unicode was passed through
                         call_args = mock_send.call_args[0][0]
-                        self.assertIn('修复错误', call_args)
+                        self.assertIn("修复错误", call_args)
 
 
-if __name__ == '__main__':
+class TestAudioTranscriber(unittest.TestCase):
+    """Test audio transcription functionality"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        import bridge
+
+        self.transcriber = bridge.AudioTranscriber()
+
+    def test_transcribe_returns_error_for_missing_file(self):
+        """transcribe() should return error for non-existent file"""
+        result = self.transcriber.transcribe("/nonexistent/audio.ogg")
+        self.assertIn("not found", result.lower())
+
+    def test_transcribe_returns_error_for_missing_transcriber(self):
+        """transcribe() should return error if transcriber script not found"""
+        import bridge
+
+        with patch.dict(os.environ, {"TRANSCRIBER_PATH": "/nonexistent/path"}):
+            import importlib
+
+            importlib.reload(bridge)
+            transcriber = bridge.AudioTranscriber()
+
+            # Create a temp file to pass the file existence check
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+                temp_path = f.name
+
+            try:
+                result = transcriber.transcribe(temp_path)
+                self.assertIn("not found", result.lower())
+            finally:
+                os.unlink(temp_path)
+
+    def test_transcribe_handles_timeout(self):
+        """transcribe() should handle transcription timeout gracefully"""
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=120)
+
+            # Create a temp file
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+                temp_path = f.name
+
+            try:
+                # Mock the transcriber path to exist
+                with patch.object(Path, "exists", return_value=True):
+                    result = self.transcriber.transcribe(temp_path)
+                    self.assertIn("timed out", result.lower())
+            finally:
+                os.unlink(temp_path)
+
+    def test_transcribe_handles_subprocess_error(self):
+        """transcribe() should handle subprocess errors gracefully"""
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stderr="Some error", stdout="")
+
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+                temp_path = f.name
+
+            try:
+                with patch.object(Path, "exists", return_value=True):
+                    result = self.transcriber.transcribe(temp_path)
+                    self.assertIn("failed", result.lower())
+            finally:
+                os.unlink(temp_path)
+
+
+class TestTranscribeCommand(unittest.TestCase):
+    """Test transcribe command in main()"""
+
+    def test_main_requires_audio_path_for_transcribe(self):
+        """main() should require audio_path for transcribe command"""
+        import bridge
+
+        with patch("sys.stdin", StringIO('{"command": "transcribe"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                bridge.main()
+
+                output = json.loads(mock_stdout.getvalue())
+                self.assertIn("No audio path", output.get("response", ""))
+
+    def test_main_handles_transcribe_command(self):
+        """main() should handle transcribe command with audio_path"""
+        import bridge
+
+        with patch(
+            "sys.stdin", StringIO('{"command": "transcribe", "audio_path": "/tmp/test.ogg"}')
+        ):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                with patch.object(
+                    bridge.AudioTranscriber, "transcribe", return_value="transcribed text"
+                ):
+                    bridge.main()
+
+                    output = json.loads(mock_stdout.getvalue())
+                    self.assertEqual(output.get("response"), "transcribed text")
+
+
+if __name__ == "__main__":
     # Run tests
     unittest.main(verbosity=2)

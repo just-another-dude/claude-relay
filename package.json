@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/whatsapp.js",
     "test": "node tests/test_whatsapp.js",
-    "test:py": "python3 tests/test_bridge.py"
+    "test:py": "python3 -m pytest tests/test_bridge.py -v",
+    "test:all": "npm test && npm run test:py",
+    "lint:py": "ruff check src/ tests/",
+    "lint:fix": "ruff check src/ tests/ --fix && ruff format src/ tests/"
   },
   "dependencies": {
     "dotenv": "^16.4.0",
