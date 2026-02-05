@@ -777,12 +777,15 @@ Current workspace info will be provided with each request."""
 
             # Handle tool use loop
             while response.stop_reason == "tool_use":
-                # Extract tool calls
+                # Extract tool calls and serialize content for messages
                 tool_results = []
-                assistant_content = response.content
+                assistant_content = []
 
-                for block in assistant_content:
+                for block in response.content:
                     if block.type == "tool_use":
+                        assistant_content.append(
+                            {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+                        )
                         tool_result = self._execute_tool(block.name, block.input)
                         tool_results.append(
                             {
@@ -791,6 +794,8 @@ Current workspace info will be provided with each request."""
                                 "content": tool_result,
                             }
                         )
+                    elif block.type == "text":
+                        assistant_content.append({"type": "text", "text": block.text})
 
                 # Continue conversation with tool results
                 messages.append({"role": "assistant", "content": assistant_content})
