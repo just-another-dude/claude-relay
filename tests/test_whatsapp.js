@@ -76,8 +76,8 @@ function isAuthorized(msg, config) {
                 return false;
             }
 
-            const isAllowedSender = author.includes(config.allowedNumber) ||
-                                    config.allowedNumber.includes(author);
+            // SECURITY: Use exact match to prevent partial number bypass
+            const isAllowedSender = author === config.allowedNumber;
             if (!isAllowedSender) {
                 return false;
             }
@@ -374,6 +374,29 @@ assert.strictEqual(
     'isAuthorized_groupModeNoNumber_allowsAnyoneInGroup'
 );
 console.log('✓ isAuthorized_groupModeNoNumber_allowsAnyoneInGroup (WARNING: insecure config)');
+
+// SECURITY: Reject partial number matches to prevent bypass attacks
+// e.g., ALLOWED_NUMBER=123 should NOT match attacker with number 1234567890
+assert.strictEqual(
+    isAuthorized(
+        { from: 'mygroup@g.us', fromMe: false, author: '1234567890@c.us' },
+        { allowedGroupId: 'mygroup@g.us', allowedNumber: '123' }
+    ),
+    false,
+    'isAuthorized_groupMode_rejectsPartialNumberMatch'
+);
+console.log('✓ isAuthorized_groupMode_rejectsPartialNumberMatch (SECURITY: prevents bypass)');
+
+// SECURITY: Also reject when allowed number is substring of attacker number
+assert.strictEqual(
+    isAuthorized(
+        { from: 'mygroup@g.us', fromMe: false, author: '123@c.us' },
+        { allowedGroupId: 'mygroup@g.us', allowedNumber: '1234567890' }
+    ),
+    false,
+    'isAuthorized_groupMode_rejectsReversePartialMatch'
+);
+console.log('✓ isAuthorized_groupMode_rejectsReversePartialMatch (SECURITY: prevents bypass)');
 
 console.log('');
 

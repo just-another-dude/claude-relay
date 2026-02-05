@@ -181,10 +181,8 @@ class ClaudeCodeBridge:
         # Capture current state
         before = self.tmux.capture_pane(50)
 
-        # Send the prompt
-        # Escape special characters for tmux
-        safe_prompt = prompt.replace('"', '\\"').replace("'", "\\'")
-        self.tmux.send_keys(safe_prompt)
+        # Send the prompt (tmux -l flag handles literal text safely)
+        self.tmux.send_keys(prompt)
 
         # Wait for response
         time.sleep(2)

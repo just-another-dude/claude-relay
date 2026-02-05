@@ -109,8 +109,9 @@ function isAuthorized(msg) {
                 return false;
             }
 
-            const isAllowedSender = author.includes(CONFIG.allowedNumber) ||
-                                    CONFIG.allowedNumber.includes(author);
+            // SECURITY: Use exact match to prevent partial number bypass
+            // e.g., ALLOWED_NUMBER=123 should NOT match 1234567890
+            const isAllowedSender = author === CONFIG.allowedNumber;
             if (!isAllowedSender) {
                 console.log(`🚫 Ignored (wrong sender in group): ${author}`);
                 return false;
@@ -248,13 +249,13 @@ async function handleVoiceMessage(msg) {
             return { success: false, error: 'Failed to download voice message' };
         }
 
-        // Save to temp file
+        // Save to temp file with restrictive permissions
         const tempDir = os.tmpdir();
-        const tempFile = path.join(tempDir, `voice_${Date.now()}.ogg`);
+        const tempFile = path.join(tempDir, `voice_${Date.now()}_${Math.random().toString(36).slice(2)}.ogg`);
 
-        // Write base64 data to file
+        // Write base64 data to file with mode 0600 (owner read/write only)
         const buffer = Buffer.from(media.data, 'base64');
-        fs.writeFileSync(tempFile, buffer);
+        fs.writeFileSync(tempFile, buffer, { mode: 0o600 });
 
         console.log(`   📁 Saved voice message to ${tempFile}`);
 
