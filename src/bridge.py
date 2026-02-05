@@ -499,7 +499,12 @@ class AudioTranscriber:
         if not audio_file.exists():
             return f"❌ Audio file not found: {audio_path}"
 
-        transcriber_script = self.transcriber_path / "transcribe.py"
+        # Choose script based on engine
+        if self.engine in ("openai", "whisper-api"):
+            transcriber_script = self.transcriber_path / "transcribe_openai.py"
+        else:
+            transcriber_script = self.transcriber_path / "transcribe.py"
+
         if not transcriber_script.exists():
             return (
                 "❌ Voice transcription not configured.\n\n"
@@ -510,16 +515,35 @@ class AudioTranscriber:
             )
 
         try:
-            result = subprocess.run(
-                [
-                    "python3",
+            # Use venv Python if available, otherwise system python3
+            venv_python = self.transcriber_path / "venv" / "bin" / "python"
+            python_cmd = str(venv_python) if venv_python.exists() else "python3"
+
+            # Build command based on engine type
+            output_file = audio_file.with_suffix(".txt")
+            if self.engine in ("openai", "whisper-api"):
+                cmd = [
+                    python_cmd,
+                    str(transcriber_script),
+                    str(audio_file),
+                    "--format",
+                    "text",
+                    "--output",
+                    str(output_file),
+                ]
+            else:
+                cmd = [
+                    python_cmd,
                     str(transcriber_script),
                     str(audio_file),
                     "--engine",
                     self.engine,
                     "--output-format",
                     "txt",
-                ],
+                ]
+
+            result = subprocess.run(
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,  # 2 minute timeout for transcription
@@ -530,8 +554,7 @@ class AudioTranscriber:
                 error_msg = result.stderr.strip() if result.stderr else "Unknown error"
                 return f"❌ Transcription failed: {error_msg}"
 
-            # The transcriber outputs to a .txt file, read it
-            output_file = audio_file.with_suffix(".txt")
+            # Read transcription from output file
             if output_file.exists():
                 text = output_file.read_text().strip()
                 # Clean up the output file
