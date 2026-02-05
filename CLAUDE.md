@@ -81,6 +81,13 @@ npm run lint:fix      # Auto-fix
 - **Messages ignored**: Check ALLOWED_GROUP_ID and ALLOWED_NUMBER
 
 ## Security Considerations
+
+**This is a PUBLIC repository.** Extra care required:
+- NEVER commit secrets, API keys, phone numbers, or personal data
+- Review all changes before pushing
+- Check `git diff` for accidental sensitive data
+
+Runtime security:
 - Group + sender whitelist is critical security layer
 - WhatsApp session stored in `.wwebjs_auth/` - keep secure
 - API key in `.env` - never commit
