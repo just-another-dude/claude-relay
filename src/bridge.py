@@ -302,6 +302,11 @@ class AudioTranscriber:
         self.transcriber_path = Path(Config.TRANSCRIBER_PATH)
         self.engine = Config.TRANSCRIBER_ENGINE
 
+    def is_available(self) -> bool:
+        """Check if audio-transcriber is set up"""
+        transcriber_script = self.transcriber_path / "transcribe.py"
+        return transcriber_script.exists()
+
     def transcribe(self, audio_path: str) -> str:
         """Transcribe an audio file to text"""
         audio_file = Path(audio_path)
@@ -310,7 +315,13 @@ class AudioTranscriber:
 
         transcriber_script = self.transcriber_path / "transcribe.py"
         if not transcriber_script.exists():
-            return f"❌ Transcriber not found at {transcriber_script}"
+            return (
+                "❌ Voice transcription not configured.\n\n"
+                "To enable, set up audio-transcriber:\n"
+                "1. Clone: git clone https://github.com/just-another-dude/audio-transcriber\n"
+                "2. Set TRANSCRIBER_PATH in .env\n\n"
+                "Or send text messages instead."
+            )
 
         try:
             result = subprocess.run(

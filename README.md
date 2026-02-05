@@ -107,14 +107,14 @@ Claude:  ✅ Done. Refactored connection pool to use async context
          managers. Added connection health checks and auto-retry...
 ```
 
-### Voice Messages
+### Voice Messages (Optional)
 
 Send a voice note and it will be:
 1. Transcribed using your configured engine (Google, Whisper, or Vosk)
 2. Sent to Claude Code as a text prompt
 3. Response delivered back to WhatsApp
 
-Requires [audio-transcriber](https://github.com/just-another-dude/audio-transcriber) to be set up (see Configuration).
+Requires [audio-transcriber](https://github.com/just-another-dude/audio-transcriber) to be set up. If not configured, voice messages will return a helpful setup message instead of failing.
 
 ## Configuration
 

@@ -409,13 +409,29 @@ class TestAudioTranscriber(unittest.TestCase):
 
         self.transcriber = bridge.AudioTranscriber()
 
+    def test_is_available_returns_false_when_transcriber_missing(self):
+        """is_available() should return False when transcriber not found"""
+        import bridge
+
+        with patch.dict(os.environ, {"TRANSCRIBER_PATH": "/nonexistent/path"}):
+            import importlib
+
+            importlib.reload(bridge)
+            transcriber = bridge.AudioTranscriber()
+            self.assertFalse(transcriber.is_available())
+
+    def test_is_available_returns_true_when_transcriber_exists(self):
+        """is_available() should return True when transcriber exists"""
+        with patch.object(Path, "exists", return_value=True):
+            self.assertTrue(self.transcriber.is_available())
+
     def test_transcribe_returns_error_for_missing_file(self):
         """transcribe() should return error for non-existent file"""
         result = self.transcriber.transcribe("/nonexistent/audio.ogg")
         self.assertIn("not found", result.lower())
 
-    def test_transcribe_returns_error_for_missing_transcriber(self):
-        """transcribe() should return error if transcriber script not found"""
+    def test_transcribe_returns_helpful_error_for_missing_transcriber(self):
+        """transcribe() should return helpful setup instructions if transcriber not found"""
         import bridge
 
         with patch.dict(os.environ, {"TRANSCRIBER_PATH": "/nonexistent/path"}):
@@ -432,7 +448,9 @@ class TestAudioTranscriber(unittest.TestCase):
 
             try:
                 result = transcriber.transcribe(temp_path)
-                self.assertIn("not found", result.lower())
+                self.assertIn("not configured", result.lower())
+                self.assertIn("audio-transcriber", result)
+                self.assertIn("TRANSCRIBER_PATH", result)
             finally:
                 os.unlink(temp_path)
 
