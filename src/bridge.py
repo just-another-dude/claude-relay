@@ -273,16 +273,77 @@ class ClaudeCodeBridge:
         # Expand user home directory
         expanded_path = os.path.expanduser(path)
 
-        # Validate path exists
-        if not os.path.isdir(expanded_path):
-            return f"❌ Directory not found: {expanded_path}"
+        # If path exists as-is, use it
+        if os.path.isdir(expanded_path):
+            target_path = expanded_path
+        else:
+            # Search for the directory in common locations
+            found_paths = self._find_directory(path)
+
+            if not found_paths:
+                return f"❌ Directory not found: {path}\n\nSearched in: ~, ~/git, ~/projects, ~/code, ~/work"
+            elif len(found_paths) == 1:
+                target_path = found_paths[0]
+            else:
+                # Multiple matches - show options
+                matches = "\n".join([f"  • {p}" for p in found_paths[:10]])
+                return f"📂 Multiple matches for '{path}':\n\n{matches}\n\nUse full path: /cd <path>"
 
         # Send /cd command to Claude Code (Claude Code's built-in command)
-        self.tmux.send_keys(f"/cd {expanded_path}")
+        self.tmux.send_keys(f"/cd {target_path}")
         time.sleep(1)
 
         output = self.tmux.capture_pane(20)
-        return f"📂 Changed directory to: {expanded_path}\n\nRecent output:\n{output[-400:]}"
+        return f"📂 Changed directory to: {target_path}\n\nRecent output:\n{output[-400:]}"
+
+    def _find_directory(self, name: str) -> list[str]:
+        """Search for a directory by name in common locations"""
+        search_roots = [
+            os.path.expanduser("~"),
+            os.path.expanduser("~/git"),
+            os.path.expanduser("~/projects"),
+            os.path.expanduser("~/code"),
+            os.path.expanduser("~/work"),
+            os.path.expanduser("~/repos"),
+            os.path.expanduser("~/src"),
+        ]
+
+        found = []
+        name_lower = name.lower()
+
+        for root in search_roots:
+            if not os.path.isdir(root):
+                continue
+
+            # Check direct children (one level deep for speed)
+            try:
+                for entry in os.listdir(root):
+                    entry_path = os.path.join(root, entry)
+                    if os.path.isdir(entry_path):
+                        # Exact match (case-insensitive)
+                        if entry.lower() == name_lower:
+                            found.append(entry_path)
+                        # Partial match
+                        elif name_lower in entry.lower():
+                            found.append(entry_path)
+            except PermissionError:
+                continue
+
+        # Remove duplicates and sort by relevance (exact matches first)
+        seen = set()
+        unique = []
+        # First add exact matches
+        for p in found:
+            if os.path.basename(p).lower() == name_lower and p not in seen:
+                unique.append(p)
+                seen.add(p)
+        # Then add partial matches
+        for p in found:
+            if p not in seen:
+                unique.append(p)
+                seen.add(p)
+
+        return unique
 
     def get_working_directory(self) -> str:
         """Get current working directory from Claude Code"""
