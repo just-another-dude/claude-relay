@@ -18,6 +18,11 @@ from unittest.mock import Mock, patch
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# Check if anthropic is available for supervisor tests
+import importlib.util
+
+HAS_ANTHROPIC = importlib.util.find_spec("anthropic") is not None
+
 
 class TestConfig(unittest.TestCase):
     """Test configuration handling"""
@@ -609,6 +614,7 @@ class TestSupervisor(unittest.TestCase):
         self.assertIsNotNone(bridge.Supervisor.SYSTEM_PROMPT)
         self.assertIn("supervisor", bridge.Supervisor.SYSTEM_PROMPT.lower())
 
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_supervisor_requires_anthropic_api_key(self):
         """Supervisor should require ANTHROPIC_API_KEY"""
         import bridge
@@ -620,6 +626,7 @@ class TestSupervisor(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bridge.Supervisor()
 
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_supervisor_execute_tool_handles_unknown_tool(self):
         """_execute_tool should handle unknown tools gracefully"""
         import bridge
@@ -628,13 +635,13 @@ class TestSupervisor(unittest.TestCase):
             import importlib
 
             importlib.reload(bridge)
-            with patch.object(bridge, "anthropic"):
-                with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
-                    supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
-                    supervisor.bridge = Mock()
-                    result = supervisor._execute_tool("nonexistent_tool", {})
-                    self.assertIn("Unknown tool", result)
+            with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                supervisor.bridge = Mock()
+                result = supervisor._execute_tool("nonexistent_tool", {})
+                self.assertIn("Unknown tool", result)
 
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_supervisor_execute_tool_handles_shell_timeout(self):
         """_execute_tool should handle shell command timeouts"""
         import bridge
@@ -645,16 +652,14 @@ class TestSupervisor(unittest.TestCase):
             importlib.reload(bridge)
             with patch("subprocess.run") as mock_run:
                 mock_run.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=30)
-                with patch.object(bridge, "anthropic"):
-                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
-                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
-                        supervisor.bridge = Mock()
-                        supervisor.bridge._current_workspace = "/tmp"  # noqa: S108
-                        result = supervisor._execute_tool(
-                            "run_shell_command", {"command": "sleep 100"}
-                        )
-                        self.assertIn("timed out", result.lower())
+                with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                    supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                    supervisor.bridge = Mock()
+                    supervisor.bridge._current_workspace = "/tmp"  # noqa: S108
+                    result = supervisor._execute_tool("run_shell_command", {"command": "sleep 100"})
+                    self.assertIn("timed out", result.lower())
 
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_main_handles_supervisor_command(self):
         """main() should handle supervisor command"""
         import bridge
@@ -709,6 +714,7 @@ class TestSupervisorSecurity(unittest.TestCase):
         sanitized = bridge.sanitize_error(error_with_long)
         self.assertNotIn(long_key, sanitized)
 
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_shell_command_respects_workspace_cwd(self):
         """Shell commands should run in the workspace directory"""
         import bridge
@@ -719,17 +725,17 @@ class TestSupervisorSecurity(unittest.TestCase):
             importlib.reload(bridge)
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(stdout="output", stderr="", returncode=0)
-                with patch.object(bridge, "anthropic"):
-                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
-                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
-                        supervisor.bridge = Mock()
-                        supervisor.bridge._current_workspace = "/safe/workspace"
-                        supervisor._execute_tool("run_shell_command", {"command": "ls"})
+                with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                    supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                    supervisor.bridge = Mock()
+                    supervisor.bridge._current_workspace = "/safe/workspace"
+                    supervisor._execute_tool("run_shell_command", {"command": "ls"})
 
-                        # Verify cwd was set correctly
-                        call_kwargs = mock_run.call_args[1]
-                        self.assertEqual(call_kwargs["cwd"], "/safe/workspace")
+                    # Verify cwd was set correctly
+                    call_kwargs = mock_run.call_args[1]
+                    self.assertEqual(call_kwargs["cwd"], "/safe/workspace")
 
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_shell_command_output_is_truncated(self):
         """Shell command output should be truncated to MAX_OUTPUT"""
         import bridge
@@ -741,16 +747,15 @@ class TestSupervisorSecurity(unittest.TestCase):
             huge_output = "x" * 10000
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(stdout=huge_output, stderr="", returncode=0)
-                with patch.object(bridge, "anthropic"):
-                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
-                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
-                        supervisor.bridge = Mock()
-                        supervisor.bridge._current_workspace = "/tmp"  # noqa: S108
-                        result = supervisor._execute_tool(
-                            "run_shell_command", {"command": "cat bigfile"}
-                        )
+                with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                    supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                    supervisor.bridge = Mock()
+                    supervisor.bridge._current_workspace = "/tmp"  # noqa: S108
+                    result = supervisor._execute_tool(
+                        "run_shell_command", {"command": "cat bigfile"}
+                    )
 
-                        self.assertLessEqual(len(result), bridge.Config.MAX_OUTPUT)
+                    self.assertLessEqual(len(result), bridge.Config.MAX_OUTPUT)
 
 
 if __name__ == "__main__":
