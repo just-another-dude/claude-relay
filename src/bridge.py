@@ -265,6 +265,38 @@ class ClaudeCodeBridge:
         output = self.tmux.capture_pane(30)
         return f"Sent: continue\n\nRecent output:\n{output[-500:]}"
 
+    def change_directory(self, path: str) -> str:
+        """Change working directory for Claude Code"""
+        if not self.tmux.exists():
+            return "No active session"
+
+        # Expand user home directory
+        expanded_path = os.path.expanduser(path)
+
+        # Validate path exists
+        if not os.path.isdir(expanded_path):
+            return f"❌ Directory not found: {expanded_path}"
+
+        # Send /cd command to Claude Code (Claude Code's built-in command)
+        self.tmux.send_keys(f"/cd {expanded_path}")
+        time.sleep(1)
+
+        output = self.tmux.capture_pane(20)
+        return f"📂 Changed directory to: {expanded_path}\n\nRecent output:\n{output[-400:]}"
+
+    def get_working_directory(self) -> str:
+        """Get current working directory from Claude Code"""
+        if not self.tmux.exists():
+            return "No active session"
+
+        # Send pwd command to see current directory
+        # We'll capture the pane and look for directory indicators
+        output = self.tmux.capture_pane(30)
+
+        # Try to find current path from prompt or output
+        # Claude Code shows the path in its interface
+        return f"📂 Current session info:\n\n{output[-600:]}"
+
     def stop(self) -> str:
         """Send Ctrl+C to stop current operation"""
         if not self.tmux.exists():
@@ -436,6 +468,18 @@ def main():
         elif command == "stop":
             bridge = ClaudeCodeBridge()
             response = bridge.stop()
+
+        elif command == "cd":
+            path = input_data.get("path", "")
+            if not path:
+                response = "No path provided. Usage: /cd <path>"
+            else:
+                bridge = ClaudeCodeBridge()
+                response = bridge.change_directory(path)
+
+        elif command == "pwd":
+            bridge = ClaudeCodeBridge()
+            response = bridge.get_working_directory()
 
         elif command == "transcribe":
             audio_path = input_data.get("audio_path", "")

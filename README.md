@@ -82,6 +82,8 @@ Then send `/help` to get started.
 | `fix the login bug` | → Claude Code |
 | `/cc refactor auth module` | → Claude Code (explicit) |
 | `/ask explain OAuth2 in 3 sentences` | → Direct API (Sonnet) |
+| `/cd ~/git/my-project` | Change working directory |
+| `/pwd` | Show current session info |
 | `/status` | Show session info |
 | `/stop` | Send Ctrl+C to Claude |
 | `/groupid` | Show current chat ID |

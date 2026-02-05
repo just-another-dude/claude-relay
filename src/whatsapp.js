@@ -275,6 +275,15 @@ function parseCommand(text) {
     if (trimmed.startsWith('/groupid')) {
         return { type: 'groupid', content: '' };
     }
+    if (trimmed.startsWith('/cd ')) {
+        return { type: 'cd', content: trimmed.slice(4).trim() };
+    }
+    if (trimmed === '/cd') {
+        return { type: 'cd', content: '' };
+    }
+    if (trimmed.startsWith('/pwd')) {
+        return { type: 'pwd', content: '' };
+    }
     if (trimmed === '1' || trimmed.toLowerCase() === 'yes' || trimmed.toLowerCase() === 'approve') {
         return { type: 'approve', content: 'yes' };
     }
@@ -360,6 +369,10 @@ continue - Continue current task
 
 *Voice Messages:*
 🎤 Send a voice note → transcribed & sent to Claude Code
+
+*Navigation:*
+/cd <path> - Change working directory
+/pwd - Show current session info
 
 *System:*
 /status - Session status
@@ -578,7 +591,21 @@ client.on('message_create', async (msg) => {
                 const contResult = await callBridge('continue');
                 response = contResult.response;
                 break;
-                
+
+            case 'cd':
+                if (!cmd.content) {
+                    response = '❌ Usage: /cd <path>\nExample: /cd ~/git/my-project';
+                } else {
+                    const cdResult = await callBridge('cd', { path: cmd.content });
+                    response = cdResult.response;
+                }
+                break;
+
+            case 'pwd':
+                const pwdResult = await callBridge('pwd');
+                response = pwdResult.response;
+                break;
+
             default:
                 response = '❓ Unknown command. Send /help for usage.';
         }
