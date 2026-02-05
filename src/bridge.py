@@ -337,7 +337,9 @@ class ClaudeCodeBridge:
             else:
                 # Multiple matches - show options
                 matches = "\n".join([f"  • {p}" for p in found_paths[:10]])
-                return f"📂 Multiple matches for '{path}':\n\n{matches}\n\nUse full path: /cd <path>"
+                return (
+                    f"📂 Multiple matches for '{path}':\n\n{matches}\n\nUse full path: /cd <path>"
+                )
 
         # Generate session name for this project
         session_name = TmuxSession.session_name_from_path(target_path)
@@ -417,7 +419,7 @@ class ClaudeCodeBridge:
         session_name, workspace = ClaudeCodeBridge.get_current_session()
 
         lines = [
-            f"📂 *Current Session*",
+            "📂 *Current Session*",
             f"Session: {session_name}",
             f"Workspace: {workspace}",
             f"Status: {'🟢 Running' if self.tmux.exists() else '⚪ Not started'}",

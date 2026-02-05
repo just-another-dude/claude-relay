@@ -134,6 +134,7 @@ ALLOWED_GROUP_ID=
 ALLOWED_NUMBER=
 
 # To find your group ID, start the relay and send /groupid in the group
+# The ID should look like: 120363424984613855@g.us
 ```
 
 ### Additional Options

@@ -134,8 +134,12 @@ const sentReplies = new Set();
  * Mode 2: Specific group + specific sender number
  */
 function isAuthorized(msg) {
+    // Use msg.id.remote for chat ID - msg.from returns Linked ID (@lid) which is sender, not group
+    const chatId = msg.id?.remote || msg.from;
+
     const msgInfo = {
         from: msg.from,
+        chatId: chatId,
         author: msg.author || null,
         fromMe: msg.fromMe,
         type: msg.type,
@@ -144,9 +148,9 @@ function isAuthorized(msg) {
 
     // If group ID is configured, use group mode
     if (CONFIG.allowedGroupId) {
-        // Must be from the allowed group
-        if (msg.from !== CONFIG.allowedGroupId) {
-            console.log(`🚫 Ignored (wrong group): ${msg.from}`);
+        // Must be from the allowed group (use chatId, not msg.from)
+        if (chatId !== CONFIG.allowedGroupId) {
+            console.log(`🚫 Ignored (wrong group): ${chatId}`);
             auditLog('AUTH_REJECT', { reason: 'wrong_group', ...msgInfo });
             return false;
         }
@@ -185,13 +189,13 @@ function isAuthorized(msg) {
 
     // No group configured - only allow direct "message yourself" chat
     if (!msg.fromMe) {
-        console.log(`🚫 Ignored (not from self): ${msg.from}`);
+        console.log(`🚫 Ignored (not from self): ${chatId}`);
         auditLog('AUTH_REJECT', { reason: 'not_from_self', ...msgInfo });
         return false;
     }
 
-    if (msg.from.includes('@g.us')) {
-        console.log(`🚫 Ignored (group, but no group configured): ${msg.from}`);
+    if (chatId.includes('@g.us')) {
+        console.log(`🚫 Ignored (group, but no group configured): ${chatId}`);
         return false;
     }
 
@@ -559,7 +563,12 @@ client.on('message_create', async (msg) => {
                 break;
 
             case 'groupid':
-                response = `📍 *Chat ID:* ${msg.from}`;
+                // Show the chat ID to use for ALLOWED_GROUP_ID
+                const chatId = msg.id?.remote || msg.from;
+                const chat = await msg.getChat();
+                response = `📍 *Group ID (for .env):*\n\`${chatId}\`\n\n` +
+                    `Chat name: ${chat.name || 'N/A'}\n` +
+                    `Is group: ${chat.isGroup}`;
                 break;
 
             case 'status':

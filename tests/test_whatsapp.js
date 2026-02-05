@@ -56,10 +56,13 @@ function parseCommand(text) {
 // ============================================================================
 
 function isAuthorized(msg, config) {
+    // Use msg.id.remote for chat ID - msg.from returns Linked ID (@lid) which is sender, not group
+    const chatId = msg.id?.remote || msg.from;
+
     // If group ID is configured, use group mode
     if (config.allowedGroupId) {
-        // Must be from the allowed group
-        if (msg.from !== config.allowedGroupId) {
+        // Must be from the allowed group (use chatId, not msg.from)
+        if (chatId !== config.allowedGroupId) {
             return false;
         }
 
@@ -91,7 +94,7 @@ function isAuthorized(msg, config) {
         return false;
     }
 
-    if (msg.from.includes('@g.us')) {
+    if (chatId.includes('@g.us')) {
         return false;
     }
 
@@ -397,6 +400,39 @@ assert.strictEqual(
     'isAuthorized_groupMode_rejectsReversePartialMatch'
 );
 console.log('✓ isAuthorized_groupMode_rejectsReversePartialMatch (SECURITY: prevents bypass)');
+
+// CRITICAL: Use msg.id.remote for group ID, not msg.from (which may be Linked ID)
+// This test simulates WhatsApp's multi-device behavior where msg.from is @lid
+assert.strictEqual(
+    isAuthorized(
+        {
+            from: '81583004508236@lid',  // Linked ID (sender), NOT the group
+            id: { remote: 'mygroup@g.us' },  // Actual group ID
+            fromMe: false,
+            author: '1234567890@c.us'
+        },
+        { allowedGroupId: 'mygroup@g.us', allowedNumber: '1234567890' }
+    ),
+    true,
+    'isAuthorized_groupMode_usesIdRemoteNotFrom'
+);
+console.log('✓ isAuthorized_groupMode_usesIdRemoteNotFrom (CRITICAL: fixes WhatsApp multi-device)');
+
+// Reject when id.remote is different group, even if msg.from matches (shouldn't happen but be safe)
+assert.strictEqual(
+    isAuthorized(
+        {
+            from: 'mygroup@g.us',  // Would match if we used msg.from
+            id: { remote: 'othergroup@g.us' },  // Actual group ID is different
+            fromMe: false,
+            author: '1234567890@c.us'
+        },
+        { allowedGroupId: 'mygroup@g.us', allowedNumber: '1234567890' }
+    ),
+    false,
+    'isAuthorized_groupMode_prefersIdRemoteOverFrom'
+);
+console.log('✓ isAuthorized_groupMode_prefersIdRemoteOverFrom (SECURITY: id.remote takes priority)');
 
 console.log('');
 
