@@ -14,28 +14,38 @@ require('dotenv').config();
 
 // Configuration
 const CONFIG = {
-    // Whitelist your phone number (with country code, no + or spaces)
-    // e.g., "1234567890" for +1 234 567 890
-    allowedNumbers: process.env.ALLOWED_NUMBERS?.split(',') || [],
-    
+    // Allowed group ID - only messages from this group are processed
+    // Set to empty string to allow direct messages to yourself instead
+    allowedGroupId: process.env.ALLOWED_GROUP_ID || '',
+
+    // Allowed sender number (in group mode) - only this number can trigger commands
+    // Format: country code + number, no + or spaces (e.g., 972542280711)
+    allowedNumber: process.env.ALLOWED_NUMBER || '',
+
     // Session directory for WhatsApp auth
     sessionDir: path.join(__dirname, '..', '.wwebjs_auth'),
-    
+
     // Python bridge path
     bridgePath: path.join(__dirname, 'bridge.py'),
-    
+
     // Max message length for responses
     maxResponseLength: 4000,
-    
+
     // Timeout for Claude operations (ms)
     timeout: 300000, // 5 minutes
 };
 
 // Validate config
-if (CONFIG.allowedNumbers.length === 0) {
-    console.error('⚠️  No allowed numbers configured!');
-    console.error('   Set ALLOWED_NUMBERS in .env file');
-    console.error('   Example: ALLOWED_NUMBERS=1234567890,0987654321');
+if (!CONFIG.allowedGroupId) {
+    console.log('ℹ️  No group ID configured - will accept direct messages to yourself');
+    console.log('   To use a group, set ALLOWED_GROUP_ID and ALLOWED_NUMBER in .env');
+} else {
+    console.log(`ℹ️  Group mode: ${CONFIG.allowedGroupId}`);
+    if (CONFIG.allowedNumber) {
+        console.log(`   Allowed sender: ${CONFIG.allowedNumber}`);
+    } else {
+        console.log('   ⚠️  No ALLOWED_NUMBER set - anyone in the group can send commands!');
+    }
 }
 
 // Initialize WhatsApp client
@@ -60,27 +70,60 @@ const client = new Client({
 // Track pending operations
 const pendingOps = new Map();
 
+// Track messages we've already processed to avoid loops
+const processedMessages = new Set();
+
+// Track messages we've sent as replies (to ignore them)
+const sentReplies = new Set();
+
 /**
- * Check if sender is authorized
+ * Check if message is authorized
+ * Mode 1: Direct messages to yourself (no group configured)
+ * Mode 2: Specific group + specific sender number
  */
 function isAuthorized(msg) {
-    // Extract phone number from WhatsApp ID (format: number@c.us)
-    const senderId = msg.from.replace('@c.us', '');
-    
-    if (CONFIG.allowedNumbers.length === 0) {
-        console.log(`⚠️  No whitelist configured, allowing: ${senderId}`);
+    // If group ID is configured, use group mode
+    if (CONFIG.allowedGroupId) {
+        // Must be from the allowed group
+        if (msg.from !== CONFIG.allowedGroupId) {
+            console.log(`🚫 Ignored (wrong group): ${msg.from}`);
+            return false;
+        }
+
+        // Must be from the allowed number
+        if (CONFIG.allowedNumber) {
+            // In groups, author contains the sender. But for your own messages,
+            // author might be undefined and fromMe is true
+            if (msg.fromMe) {
+                // Message is from yourself - allowed
+                return true;
+            }
+
+            // Check author field for other senders
+            const author = (msg.author || '').replace('@c.us', '').replace('@lid', '');
+            const isAllowedSender = author.includes(CONFIG.allowedNumber) ||
+                                    CONFIG.allowedNumber.includes(author);
+            if (!isAllowedSender) {
+                console.log(`🚫 Ignored (wrong sender in group): ${author}`);
+                return false;
+            }
+        }
+
         return true;
     }
-    
-    const allowed = CONFIG.allowedNumbers.some(num => 
-        senderId.includes(num) || num.includes(senderId)
-    );
-    
-    if (!allowed) {
-        console.log(`🚫 Unauthorized: ${senderId}`);
+
+    // No group configured - only allow direct "message yourself" chat
+    if (!msg.fromMe) {
+        console.log(`🚫 Ignored (not from self): ${msg.from}`);
+        return false;
     }
-    
-    return allowed;
+
+    if (msg.from.includes('@g.us')) {
+        console.log(`🚫 Ignored (group, but no group configured): ${msg.from}`);
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -157,6 +200,9 @@ function parseCommand(text) {
     if (trimmed.startsWith('/help')) {
         return { type: 'help', content: '' };
     }
+    if (trimmed.startsWith('/groupid')) {
+        return { type: 'groupid', content: '' };
+    }
     if (trimmed === '1' || trimmed.toLowerCase() === 'yes' || trimmed.toLowerCase() === 'approve') {
         return { type: 'approve', content: 'yes' };
     }
@@ -230,11 +276,15 @@ client.on('ready', () => {
     console.log('  🚀 Claude Relay is ready!');
     console.log('═══════════════════════════════════════');
     console.log('');
-    console.log('Allowed numbers:', CONFIG.allowedNumbers.length > 0 
-        ? CONFIG.allowedNumbers.join(', ') 
-        : '(none - all allowed)');
+    if (CONFIG.allowedGroupId) {
+        console.log('Mode: Group');
+        console.log(`  Group ID: ${CONFIG.allowedGroupId}`);
+        console.log(`  Sender: ${CONFIG.allowedNumber || '(anyone)'}`);
+    } else {
+        console.log('Mode: Direct messages to yourself');
+    }
     console.log('');
-    console.log('Send /help to your WhatsApp to get started');
+    console.log('Send /help to get started');
     console.log('');
 });
 
@@ -243,15 +293,48 @@ client.on('disconnected', (reason) => {
     console.log('   Attempting to reconnect...');
 });
 
-client.on('message', async (msg) => {
-    // Ignore group messages, only handle direct messages
-    if (msg.from.includes('@g.us')) return;
-    
-    // Ignore messages from self
-    if (msg.fromMe) return;
-    
-    // Check authorization
+client.on('message_create', async (msg) => {
+    // Skip if we've already processed this message (prevents loops from our own replies)
+    if (processedMessages.has(msg.id._serialized)) {
+        return;
+    }
+    processedMessages.add(msg.id._serialized);
+
+    // Skip if this is a message we sent as a reply
+    if (sentReplies.has(msg.id._serialized)) {
+        return;
+    }
+
+    // Limit set sizes to prevent memory leak
+    if (processedMessages.size > 1000) {
+        const oldest = processedMessages.values().next().value;
+        processedMessages.delete(oldest);
+    }
+    if (sentReplies.size > 1000) {
+        const oldest = sentReplies.values().next().value;
+        sentReplies.delete(oldest);
+    }
+
+    // Check authorization (must be from self, optionally in specific group)
     if (!isAuthorized(msg)) {
+        return;
+    }
+
+    // Skip messages that are bot responses (check for common response patterns)
+    const body = msg.body;
+    if (body.startsWith('🤖') || body.startsWith('📊') ||
+        body.startsWith('🛑') || body.startsWith('⚙️') ||
+        body.startsWith('🤔') || body.startsWith('❌') ||
+        body.startsWith('📍') || body.startsWith('✅') ||
+        body.startsWith('(no visible response') ||
+        body.includes('*Claude Relay Commands*')) {
+        console.log('⏭️  Skipped bot response');
+        return;
+    }
+
+    // Skip if this is a reply to another message (quoted message)
+    if (msg.hasQuotedMsg) {
+        console.log('⏭️  Skipped quoted reply');
         return;
     }
     
@@ -270,7 +353,11 @@ client.on('message', async (msg) => {
             case 'help':
                 response = getHelp();
                 break;
-                
+
+            case 'groupid':
+                response = `📍 *Chat ID:* ${msg.from}`;
+                break;
+
             case 'status':
                 const status = await callBridge('status');
                 response = `📊 *Status*\n\n${status.response || JSON.stringify(status, null, 2)}`;
@@ -282,13 +369,15 @@ client.on('message', async (msg) => {
                 break;
                 
             case 'api':
-                await msg.reply('🤔 Thinking...');
+                const apiPending = await msg.reply('🤔 Thinking...');
+                if (apiPending?.id?._serialized) sentReplies.add(apiPending.id._serialized);
                 const apiResult = await callBridge('api', { prompt: cmd.content });
                 response = apiResult.response;
                 break;
-                
+
             case 'claude-code':
-                await msg.reply('⚙️ Sending to Claude Code...');
+                const ccPending = await msg.reply('⚙️ Sending to Claude Code...');
+                if (ccPending?.id?._serialized) sentReplies.add(ccPending.id._serialized);
                 const ccResult = await callBridge('claude-code', { prompt: cmd.content });
                 response = ccResult.response;
                 break;
@@ -307,13 +396,19 @@ client.on('message', async (msg) => {
                 response = '❓ Unknown command. Send /help for usage.';
         }
         
-        // Send response
-        await msg.reply(formatResponse(response));
+        // Send response and track it to avoid loops
+        const sentMsg = await msg.reply(formatResponse(response));
+        if (sentMsg?.id?._serialized) {
+            sentReplies.add(sentMsg.id._serialized);
+        }
         console.log('   ✅ Response sent');
-        
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
-        await msg.reply(`❌ Error: ${error.message}`);
+        const errMsg = await msg.reply(`❌ Error: ${error.message}`);
+        if (errMsg?.id?._serialized) {
+            sentReplies.add(errMsg.id._serialized);
+        }
     }
 });
 

@@ -85,12 +85,20 @@ class TmuxSession:
         """Send keys to tmux pane"""
         if not self.exists():
             self.create()
-        
-        cmd = ['tmux', 'send-keys', '-t', self.pane, keys]
-        if enter:
-            cmd.append('Enter')
-        
+
+        # Send the text with -l flag (literal) to avoid interpretation
+        cmd = ['tmux', 'send-keys', '-t', self.pane, '-l', keys]
         result = subprocess.run(cmd, capture_output=True)
+        if result.returncode != 0:
+            return False
+
+        # Send Enter as separate command
+        if enter:
+            result = subprocess.run(
+                ['tmux', 'send-keys', '-t', self.pane, 'Enter'],
+                capture_output=True
+            )
+
         return result.returncode == 0
     
     def capture_pane(self, lines: int = 100) -> str:
