@@ -40,13 +40,24 @@ Running Claude Code from a phone terminal is painful — tiny screen, no code re
 ## Features
 
 - **WhatsApp native** — Chat keyboard, voice-to-text, push notifications
-- **Claude Code integration** — Full CLI access through tmux
-- **Supervisor mode** — AI summarizes raw terminal output for clean, mobile-friendly responses
+- **Supervisor mode (NEW)** — Opus AI orchestrates all actions, providing clean, intelligent responses
+- **Claude Code integration** — Full CLI access through tmux with per-project sessions
 - **Direct API mode** — Quick questions via `/ask` (no CLI needed)
-- **Voice messages** — Speak your prompts, they get transcribed and sent to Claude
-- **Secure by default** — Group + sender whitelist authorization
+- **Voice messages** — Speak your prompts (Google or OpenAI Whisper API transcription)
+- **Secure by default** — Group + sender whitelist authorization with audit logging
 - **Session persistence** — Claude keeps working when you disconnect
 - **Quick approvals** — Just send `1` or `2`
+
+### Supervisor Mode
+
+When enabled, all messages go to an AI supervisor (Opus) first instead of directly to Claude Code. The supervisor:
+
+- **Analyzes your request** and decides the best approach
+- **Executes tools** — Claude Code, shell commands, directory changes
+- **Returns clean responses** — No terminal noise, mobile-friendly formatting
+- **Handles complex tasks** — Multi-step operations coordinated intelligently
+
+Enable with `SUPERVISOR_ENABLED=true` in `.env`.
 
 ## Quick Start
 
@@ -155,6 +166,10 @@ MAX_OUTPUT=3000
 TRANSCRIBER_PATH=~/git/audio-transcriber
 TRANSCRIBER_ENGINE=google  # google (free), openai (Whisper API), whisper, or vosk
 OPENAI_API_KEY=sk-...      # Required for openai engine
+
+# Supervisor mode (recommended for mobile use)
+SUPERVISOR_ENABLED=true
+SUPERVISOR_MODEL=claude-opus-4-6  # or claude-sonnet-4-20250514 for faster/cheaper
 ```
 
 ## Running in Background
@@ -273,7 +288,11 @@ src/
 
 ## Roadmap
 
-- [x] Voice message transcription
+- [x] Voice message transcription (Google, OpenAI Whisper API)
+- [x] Supervisor mode (AI orchestrates actions)
+- [x] Per-project persistent sessions
+- [x] Audit logging
+- [x] Systemd service support
 - [ ] File/image sharing
 - [ ] Multiple conversation threads
 - [ ] Rate limiting

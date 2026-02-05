@@ -582,6 +582,177 @@ class TestTranscribeCommand(unittest.TestCase):
                     self.assertEqual(output.get("response"), "transcribed text")
 
 
+class TestSupervisor(unittest.TestCase):
+    """Test Supervisor class (AI orchestrator)"""
+
+    def test_supervisor_tools_are_defined(self):
+        """Supervisor should have all required tools defined"""
+        import bridge
+
+        expected_tools = [
+            "send_to_claude_code",
+            "run_shell_command",
+            "change_directory",
+            "get_session_status",
+            "send_approval",
+            "stop_claude_code",
+        ]
+
+        tool_names = [tool["name"] for tool in bridge.Supervisor.TOOLS]
+        for expected in expected_tools:
+            self.assertIn(expected, tool_names)
+
+    def test_supervisor_system_prompt_exists(self):
+        """Supervisor should have a system prompt defined"""
+        import bridge
+
+        self.assertIsNotNone(bridge.Supervisor.SYSTEM_PROMPT)
+        self.assertIn("supervisor", bridge.Supervisor.SYSTEM_PROMPT.lower())
+
+    def test_supervisor_requires_anthropic_api_key(self):
+        """Supervisor should require ANTHROPIC_API_KEY"""
+        import bridge
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
+            import importlib
+
+            importlib.reload(bridge)
+            with self.assertRaises(ValueError):
+                bridge.Supervisor()
+
+    def test_supervisor_execute_tool_handles_unknown_tool(self):
+        """_execute_tool should handle unknown tools gracefully"""
+        import bridge
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            import importlib
+
+            importlib.reload(bridge)
+            with patch.object(bridge, "anthropic"):
+                with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                    supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                    supervisor.bridge = Mock()
+                    result = supervisor._execute_tool("nonexistent_tool", {})
+                    self.assertIn("Unknown tool", result)
+
+    def test_supervisor_execute_tool_handles_shell_timeout(self):
+        """_execute_tool should handle shell command timeouts"""
+        import bridge
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            import importlib
+
+            importlib.reload(bridge)
+            with patch("subprocess.run") as mock_run:
+                mock_run.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=30)
+                with patch.object(bridge, "anthropic"):
+                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                        supervisor.bridge = Mock()
+                        supervisor.bridge._current_workspace = "/tmp"  # noqa: S108
+                        result = supervisor._execute_tool(
+                            "run_shell_command", {"command": "sleep 100"}
+                        )
+                        self.assertIn("timed out", result.lower())
+
+    def test_main_handles_supervisor_command(self):
+        """main() should handle supervisor command"""
+        import bridge
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            import importlib
+
+            importlib.reload(bridge)
+
+            with patch("sys.stdin", StringIO('{"command": "supervisor", "prompt": "test"}')):
+                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                    with patch.object(bridge.Supervisor, "process", return_value="test response"):
+                        bridge.main()
+
+                        output = json.loads(mock_stdout.getvalue())
+                        self.assertEqual(output.get("response"), "test response")
+
+    def test_main_supervisor_requires_prompt(self):
+        """main() should require prompt for supervisor command"""
+        import bridge
+
+        with patch("sys.stdin", StringIO('{"command": "supervisor"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                bridge.main()
+
+                output = json.loads(mock_stdout.getvalue())
+                self.assertIn("No message", output.get("response", ""))
+
+
+class TestSupervisorSecurity(unittest.TestCase):
+    """Security tests for Supervisor"""
+
+    def test_sanitize_error_redacts_api_keys(self):
+        """sanitize_error should redact API keys from error messages"""
+        import bridge
+
+        # Test Anthropic API key
+        error_with_key = "Error: Invalid API key sk-ant-api03-abc123xyz"
+        sanitized = bridge.sanitize_error(error_with_key)
+        self.assertNotIn("sk-ant-", sanitized)
+        self.assertIn("[REDACTED]", sanitized)
+
+        # Test OpenAI API key
+        error_with_openai = "Error: sk-proj-ABC123XYZ789 is invalid"
+        sanitized = bridge.sanitize_error(error_with_openai)
+        self.assertNotIn("sk-proj-", sanitized)
+        self.assertIn("[REDACTED]", sanitized)
+
+        # Test generic long API key
+        long_key = "sk-" + "a" * 50
+        error_with_long = f"Error with key {long_key}"
+        sanitized = bridge.sanitize_error(error_with_long)
+        self.assertNotIn(long_key, sanitized)
+
+    def test_shell_command_respects_workspace_cwd(self):
+        """Shell commands should run in the workspace directory"""
+        import bridge
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            import importlib
+
+            importlib.reload(bridge)
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = Mock(stdout="output", stderr="", returncode=0)
+                with patch.object(bridge, "anthropic"):
+                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                        supervisor.bridge = Mock()
+                        supervisor.bridge._current_workspace = "/safe/workspace"
+                        supervisor._execute_tool("run_shell_command", {"command": "ls"})
+
+                        # Verify cwd was set correctly
+                        call_kwargs = mock_run.call_args[1]
+                        self.assertEqual(call_kwargs["cwd"], "/safe/workspace")
+
+    def test_shell_command_output_is_truncated(self):
+        """Shell command output should be truncated to MAX_OUTPUT"""
+        import bridge
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key", "MAX_OUTPUT": "100"}):
+            import importlib
+
+            importlib.reload(bridge)
+            huge_output = "x" * 10000
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = Mock(stdout=huge_output, stderr="", returncode=0)
+                with patch.object(bridge, "anthropic"):
+                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                        supervisor.bridge = Mock()
+                        supervisor.bridge._current_workspace = "/tmp"  # noqa: S108
+                        result = supervisor._execute_tool(
+                            "run_shell_command", {"command": "cat bigfile"}
+                        )
+
+                        self.assertLessEqual(len(result), bridge.Config.MAX_OUTPUT)
+
+
 if __name__ == "__main__":
     # Run tests
     unittest.main(verbosity=2)

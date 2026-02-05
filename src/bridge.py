@@ -57,6 +57,18 @@ class Config:
     SUPERVISOR_MODEL = os.environ.get("SUPERVISOR_MODEL", "claude-sonnet-4-20250514")
 
 
+def sanitize_error(error: str) -> str:
+    """Sanitize error messages to prevent API key leakage"""
+    import re
+
+    error_str = str(error)
+    # Remove any API keys that might be in error messages
+    error_str = re.sub(r"sk-ant-[a-zA-Z0-9-]+", "[REDACTED]", error_str)
+    error_str = re.sub(r"sk-proj-[a-zA-Z0-9-_]+", "[REDACTED]", error_str)
+    error_str = re.sub(r"sk-[a-zA-Z0-9]{48,}", "[REDACTED]", error_str)
+    return error_str
+
+
 class TmuxSession:
     """Manage tmux session for Claude Code"""
 
@@ -573,7 +585,7 @@ class AudioTranscriber:
         except subprocess.TimeoutExpired:
             return "❌ Transcription timed out"
         except Exception as e:
-            return f"❌ Transcription error: {str(e)}"
+            return f"❌ Transcription error: {sanitize_error(e)}"
 
 
 class AnthropicAPI:
@@ -599,7 +611,7 @@ class AnthropicAPI:
             return response.content[0].text
 
         except Exception as e:
-            return f"❌ API Error: {str(e)}"
+            return f"❌ API Error: {sanitize_error(e)}"
 
 
 class Supervisor:
@@ -753,7 +765,7 @@ Current workspace info will be provided with each request."""
         except subprocess.TimeoutExpired:
             return "⚠️ Command timed out"
         except Exception as e:
-            return f"❌ Tool error: {str(e)}"
+            return f"❌ Tool error: {sanitize_error(e)}"
 
     def process(self, user_message: str) -> str:
         """Process a user message and return a response"""
@@ -784,7 +796,12 @@ Current workspace info will be provided with each request."""
                 for block in response.content:
                     if block.type == "tool_use":
                         assistant_content.append(
-                            {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+                            {
+                                "type": "tool_use",
+                                "id": block.id,
+                                "name": block.name,
+                                "input": block.input,
+                            }
                         )
                         tool_result = self._execute_tool(block.name, block.input)
                         tool_results.append(
@@ -817,7 +834,7 @@ Current workspace info will be provided with each request."""
             return "No response generated"
 
         except Exception as e:
-            return f"❌ Supervisor error: {str(e)}"
+            return f"❌ Supervisor error: {sanitize_error(e)}"
 
 
 def main():
