@@ -13,6 +13,57 @@ const os = require('os');
 
 require('dotenv').config();
 
+// ============================================================================
+// Audit Logging
+// ============================================================================
+
+const AUDIT_LOG_PATH = process.env.AUDIT_LOG_PATH || path.join(__dirname, '..', 'logs', 'audit.log');
+const AUDIT_LOG_ENABLED = process.env.AUDIT_LOG_ENABLED !== 'false'; // enabled by default
+
+// Ensure log directory exists
+if (AUDIT_LOG_ENABLED) {
+    const logDir = path.dirname(AUDIT_LOG_PATH);
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+    }
+}
+
+/**
+ * Write an entry to the audit log
+ * @param {string} event - Event type (AUTH_REJECT, AUTH_ACCEPT, CMD_RECEIVED, CMD_SUCCESS, CMD_ERROR)
+ * @param {object} details - Event details
+ */
+function auditLog(event, details) {
+    if (!AUDIT_LOG_ENABLED) return;
+
+    const entry = {
+        timestamp: new Date().toISOString(),
+        event,
+        ...details
+    };
+
+    const line = JSON.stringify(entry) + '\n';
+
+    try {
+        fs.appendFileSync(AUDIT_LOG_PATH, line, { mode: 0o600 });
+    } catch (err) {
+        console.error('Failed to write audit log:', err.message);
+    }
+}
+
+/**
+ * Sanitize sensitive data from log entries
+ */
+function sanitizeForLog(text, maxLength = 200) {
+    if (!text) return '';
+    // Truncate long content
+    let sanitized = text.length > maxLength ? text.slice(0, maxLength) + '...[truncated]' : text;
+    // Remove potential secrets (basic patterns)
+    sanitized = sanitized.replace(/sk-ant-[a-zA-Z0-9-]+/g, '[API_KEY_REDACTED]');
+    sanitized = sanitized.replace(/Bearer [a-zA-Z0-9-_.]+/g, '[TOKEN_REDACTED]');
+    return sanitized;
+}
+
 // Configuration
 const CONFIG = {
     // Allowed group ID - only messages from this group are processed
@@ -83,11 +134,20 @@ const sentReplies = new Set();
  * Mode 2: Specific group + specific sender number
  */
 function isAuthorized(msg) {
+    const msgInfo = {
+        from: msg.from,
+        author: msg.author || null,
+        fromMe: msg.fromMe,
+        type: msg.type,
+        hasMedia: msg.hasMedia
+    };
+
     // If group ID is configured, use group mode
     if (CONFIG.allowedGroupId) {
         // Must be from the allowed group
         if (msg.from !== CONFIG.allowedGroupId) {
             console.log(`🚫 Ignored (wrong group): ${msg.from}`);
+            auditLog('AUTH_REJECT', { reason: 'wrong_group', ...msgInfo });
             return false;
         }
 
@@ -106,6 +166,7 @@ function isAuthorized(msg) {
             // SECURITY: Reject if author is empty or missing
             if (!author) {
                 console.log(`🚫 Ignored (empty author in group)`);
+                auditLog('AUTH_REJECT', { reason: 'empty_author', ...msgInfo });
                 return false;
             }
 
@@ -114,6 +175,7 @@ function isAuthorized(msg) {
             const isAllowedSender = author === CONFIG.allowedNumber;
             if (!isAllowedSender) {
                 console.log(`🚫 Ignored (wrong sender in group): ${author}`);
+                auditLog('AUTH_REJECT', { reason: 'wrong_sender', sender: author, ...msgInfo });
                 return false;
             }
         }
@@ -124,6 +186,7 @@ function isAuthorized(msg) {
     // No group configured - only allow direct "message yourself" chat
     if (!msg.fromMe) {
         console.log(`🚫 Ignored (not from self): ${msg.from}`);
+        auditLog('AUTH_REJECT', { reason: 'not_from_self', ...msgInfo });
         return false;
     }
 
@@ -378,6 +441,14 @@ client.on('message_create', async (msg) => {
     if (msg.hasMedia && (msg.type === 'ptt' || msg.type === 'audio')) {
         console.log(`\n🎤 Voice message from ${msg.from}`);
 
+        const voiceLogInfo = {
+            from: msg.from,
+            author: msg.author || null,
+            fromMe: msg.fromMe,
+            commandType: 'voice'
+        };
+        auditLog('VOICE_RECEIVED', voiceLogInfo);
+
         const transcribePending = await msg.reply('🎤 Transcribing voice message...');
         if (transcribePending?.id?._serialized) sentReplies.add(transcribePending.id._serialized);
 
@@ -386,11 +457,17 @@ client.on('message_create', async (msg) => {
         if (!voiceResult.success) {
             const errMsg = await msg.reply(`❌ Transcription failed: ${voiceResult.error}`);
             if (errMsg?.id?._serialized) sentReplies.add(errMsg.id._serialized);
+            auditLog('VOICE_ERROR', { ...voiceLogInfo, error: voiceResult.error });
             return;
         }
 
         const transcribedText = voiceResult.text;
         console.log(`   📝 Transcribed: "${transcribedText.slice(0, 100)}${transcribedText.length > 100 ? '...' : ''}"`);
+
+        auditLog('VOICE_TRANSCRIBED', {
+            ...voiceLogInfo,
+            transcribedContent: sanitizeForLog(transcribedText)
+        });
 
         // Send transcription confirmation
         const confirmMsg = await msg.reply(`📝 *Transcribed:* ${transcribedText}\n\n⚙️ Sending to Claude Code...`);
@@ -404,10 +481,17 @@ client.on('message_create', async (msg) => {
             const sentMsg = await msg.reply(formatResponse(response));
             if (sentMsg?.id?._serialized) sentReplies.add(sentMsg.id._serialized);
             console.log('   ✅ Response sent');
+
+            auditLog('VOICE_SUCCESS', {
+                ...voiceLogInfo,
+                responseLength: response ? response.length : 0
+            });
         } catch (error) {
             console.error('   ❌ Error:', error.message);
             const errMsg = await msg.reply(`❌ Error: ${error.message}`);
             if (errMsg?.id?._serialized) sentReplies.add(errMsg.id._serialized);
+
+            auditLog('VOICE_CMD_ERROR', { ...voiceLogInfo, error: error.message });
         }
 
         return;
@@ -434,11 +518,21 @@ client.on('message_create', async (msg) => {
     const text = msg.body;
     console.log(`\n📨 Message from ${msg.from}:`);
     console.log(`   "${text.slice(0, 100)}${text.length > 100 ? '...' : ''}"`);
-    
+
     // Parse command
     const cmd = parseCommand(text);
     console.log(`   Command type: ${cmd.type}`);
-    
+
+    // Audit log: command received
+    const cmdLogInfo = {
+        from: msg.from,
+        author: msg.author || null,
+        fromMe: msg.fromMe,
+        commandType: cmd.type,
+        content: sanitizeForLog(cmd.content)
+    };
+    auditLog('CMD_RECEIVED', cmdLogInfo);
+
     try {
         let response;
         
@@ -496,12 +590,24 @@ client.on('message_create', async (msg) => {
         }
         console.log('   ✅ Response sent');
 
+        // Audit log: command succeeded
+        auditLog('CMD_SUCCESS', {
+            ...cmdLogInfo,
+            responseLength: response ? response.length : 0
+        });
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
         const errMsg = await msg.reply(`❌ Error: ${error.message}`);
         if (errMsg?.id?._serialized) {
             sentReplies.add(errMsg.id._serialized);
         }
+
+        // Audit log: command failed
+        auditLog('CMD_ERROR', {
+            ...cmdLogInfo,
+            error: error.message
+        });
     }
 });
 
@@ -513,15 +619,28 @@ console.log('  Claude Relay - WhatsApp → Claude');
 console.log('═══════════════════════════════════════');
 console.log('');
 console.log('Initializing WhatsApp connection...');
+if (AUDIT_LOG_ENABLED) {
+    console.log(`Audit logging enabled: ${AUDIT_LOG_PATH}`);
+}
+
+auditLog('SERVICE_START', {
+    version: require('../package.json').version,
+    nodeVersion: process.version,
+    platform: process.platform,
+    groupMode: !!CONFIG.allowedGroupId,
+    auditLogPath: AUDIT_LOG_PATH
+});
 
 client.initialize().catch(err => {
     console.error('Failed to initialize:', err);
+    auditLog('SERVICE_ERROR', { error: err.message });
     process.exit(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
     console.log('\nShutting down...');
+    auditLog('SERVICE_STOP', { reason: 'SIGINT' });
     await client.destroy();
     process.exit(0);
 });

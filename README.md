@@ -202,6 +202,33 @@ The relay uses a two-layer authorization:
 
 If no group is configured, it falls back to "message yourself" mode (only your own direct messages work).
 
+### Audit Logging
+
+All commands and authorization attempts are logged to `logs/audit.log` (JSON format):
+
+```bash
+# View recent activity
+tail -f logs/audit.log | jq .
+
+# Search for rejected attempts
+grep AUTH_REJECT logs/audit.log | jq .
+
+# Search for errors
+grep CMD_ERROR logs/audit.log | jq .
+```
+
+Log events:
+- `SERVICE_START` / `SERVICE_STOP` — Relay lifecycle
+- `AUTH_REJECT` — Unauthorized message attempts (includes sender info)
+- `CMD_RECEIVED` / `CMD_SUCCESS` / `CMD_ERROR` — Command execution
+- `VOICE_RECEIVED` / `VOICE_TRANSCRIBED` / `VOICE_SUCCESS` — Voice messages
+
+Configure in `.env`:
+```bash
+AUDIT_LOG_ENABLED=true          # Enable/disable (default: true)
+AUDIT_LOG_PATH=./logs/audit.log # Log file location
+```
+
 ### Recommended Additions
 
 - **Tailscale** — Private network, no port forwarding
