@@ -152,7 +152,8 @@ MAX_OUTPUT=3000
 
 # Voice transcription (requires audio-transcriber)
 TRANSCRIBER_PATH=~/git/audio-transcriber
-TRANSCRIBER_ENGINE=google  # google, whisper, or vosk
+TRANSCRIBER_ENGINE=google  # google (free), openai (Whisper API), whisper, or vosk
+OPENAI_API_KEY=sk-...      # Required for openai engine
 ```
 
 ## Running in Background

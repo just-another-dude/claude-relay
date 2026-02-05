@@ -493,6 +493,43 @@ class TestAudioTranscriber(unittest.TestCase):
                 os.unlink(temp_path)
 
 
+class TestAudioTranscriberEngines(unittest.TestCase):
+    """Test audio transcriber engine selection"""
+
+    def test_openai_engine_uses_transcribe_openai_script(self):
+        """OpenAI engine should use transcribe_openai.py"""
+        import bridge
+
+        with patch.dict(os.environ, {"TRANSCRIBER_ENGINE": "openai"}):
+            import importlib
+
+            importlib.reload(bridge)
+            transcriber = bridge.AudioTranscriber()
+            self.assertEqual(transcriber.engine, "openai")
+
+    def test_whisper_api_engine_uses_transcribe_openai_script(self):
+        """whisper-api engine should also use transcribe_openai.py"""
+        import bridge
+
+        with patch.dict(os.environ, {"TRANSCRIBER_ENGINE": "whisper-api"}):
+            import importlib
+
+            importlib.reload(bridge)
+            transcriber = bridge.AudioTranscriber()
+            self.assertEqual(transcriber.engine, "whisper-api")
+
+    def test_google_engine_uses_transcribe_script(self):
+        """google engine should use transcribe.py"""
+        import bridge
+
+        with patch.dict(os.environ, {"TRANSCRIBER_ENGINE": "google"}):
+            import importlib
+
+            importlib.reload(bridge)
+            transcriber = bridge.AudioTranscriber()
+            self.assertEqual(transcriber.engine, "google")
+
+
 class TestTranscribeCommand(unittest.TestCase):
     """Test transcribe command in main()"""
 

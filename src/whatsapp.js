@@ -60,6 +60,8 @@ function sanitizeForLog(text, maxLength = 200) {
     let sanitized = text.length > maxLength ? text.slice(0, maxLength) + '...[truncated]' : text;
     // Remove potential secrets (basic patterns)
     sanitized = sanitized.replace(/sk-ant-[a-zA-Z0-9-]+/g, '[API_KEY_REDACTED]');
+    sanitized = sanitized.replace(/sk-proj-[a-zA-Z0-9-_]+/g, '[API_KEY_REDACTED]');
+    sanitized = sanitized.replace(/sk-[a-zA-Z0-9]{48,}/g, '[API_KEY_REDACTED]');
     sanitized = sanitized.replace(/Bearer [a-zA-Z0-9-_.]+/g, '[TOKEN_REDACTED]');
     return sanitized;
 }
