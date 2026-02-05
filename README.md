@@ -41,6 +41,7 @@ Running Claude Code from a phone terminal is painful — tiny screen, no code re
 
 - **WhatsApp native** — Chat keyboard, voice-to-text, push notifications
 - **Claude Code integration** — Full CLI access through tmux
+- **Supervisor mode** — AI summarizes raw terminal output for clean, mobile-friendly responses
 - **Direct API mode** — Quick questions via `/ask` (no CLI needed)
 - **Voice messages** — Speak your prompts, they get transcribed and sent to Claude
 - **Secure by default** — Group + sender whitelist authorization

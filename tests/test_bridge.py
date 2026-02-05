@@ -334,6 +334,27 @@ class TestSecurityBoundaries(unittest.TestCase):
                         # Result should be truncated
                         self.assertLessEqual(len(result), bridge.Config.MAX_OUTPUT + 50)
 
+    def test_supervisor_mode_config(self):
+        """Supervisor mode should be configurable via environment"""
+        import bridge
+
+        # Test enabled
+        with patch.dict(os.environ, {"SUPERVISOR_ENABLED": "true"}):
+            import importlib
+
+            importlib.reload(bridge)
+            self.assertTrue(bridge.Config.SUPERVISOR_ENABLED)
+
+        # Test disabled
+        with patch.dict(os.environ, {"SUPERVISOR_ENABLED": "false"}):
+            importlib.reload(bridge)
+            self.assertFalse(bridge.Config.SUPERVISOR_ENABLED)
+
+        # Test default (disabled)
+        with patch.dict(os.environ, {"SUPERVISOR_ENABLED": ""}):
+            importlib.reload(bridge)
+            self.assertFalse(bridge.Config.SUPERVISOR_ENABLED)
+
     def test_api_key_not_logged_or_exposed(self):
         """API key should never appear in responses or logs"""
         import bridge

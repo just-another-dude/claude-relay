@@ -52,6 +52,10 @@ class Config:
     # Transcription engine (whisper, google, vosk)
     TRANSCRIBER_ENGINE = os.environ.get("TRANSCRIBER_ENGINE", "google")
 
+    # Supervisor mode - post-process Claude Code output through API
+    SUPERVISOR_ENABLED = os.environ.get("SUPERVISOR_ENABLED", "").lower() in ("true", "1", "yes")
+    SUPERVISOR_MODEL = os.environ.get("SUPERVISOR_MODEL", "claude-sonnet-4-20250514")
+
 
 class TmuxSession:
     """Manage tmux session for Claude Code"""
@@ -597,6 +601,45 @@ class AnthropicAPI:
         except Exception as e:
             return f"❌ API Error: {str(e)}"
 
+    def summarize_claude_output(self, user_request: str, raw_output: str) -> str:
+        """Summarize Claude Code output for mobile-friendly reading"""
+        try:
+            system_prompt = """You are a helpful assistant summarizing Claude Code CLI output for a mobile user.
+
+Your job:
+1. Extract the key information from the raw terminal output
+2. Remove UI noise (box drawings, welcome banners, progress indicators)
+3. Provide a clear, concise summary of what happened or what Claude said
+4. If there are action items or questions, highlight them clearly
+5. If Claude is asking for approval, make that very clear with options
+
+Format for mobile:
+- Keep responses concise (under 500 words)
+- Use bullet points for lists
+- Use emojis sparingly for status (✅ ❌ ⚠️ 🔄)
+- If code was modified, briefly describe what changed
+- If there's an error, explain it simply
+
+Never include raw terminal escape codes, box-drawing characters, or UI elements."""
+
+            response = self.client.messages.create(
+                model=Config.SUPERVISOR_MODEL,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"User request: {user_request}\n\nRaw Claude Code output:\n```\n{raw_output}\n```\n\nProvide a clean, mobile-friendly summary:",
+                    }
+                ],
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            # Fall back to raw output if summarization fails
+            return f"⚠️ Summary failed: {e}\n\nRaw output:\n{raw_output[:1500]}"
+
 
 def main():
     """Main entry point - reads JSON from stdin, writes JSON to stdout"""
@@ -621,7 +664,18 @@ def main():
                 response = "No prompt provided"
             else:
                 bridge = ClaudeCodeBridge()
-                response = bridge.send_prompt(prompt)
+                raw_response = bridge.send_prompt(prompt)
+
+                # Supervisor mode: post-process through API for clean output
+                if Config.SUPERVISOR_ENABLED and HAS_ANTHROPIC and Config.ANTHROPIC_API_KEY:
+                    try:
+                        api = AnthropicAPI()
+                        response = api.summarize_claude_output(prompt, raw_response)
+                    except Exception as e:
+                        # Fall back to raw response if supervisor fails
+                        response = f"⚠️ Supervisor error: {e}\n\n{raw_response}"
+                else:
+                    response = raw_response
 
         elif command == "api":
             prompt = input_data.get("prompt", "")
