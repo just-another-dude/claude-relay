@@ -1,0 +1,27 @@
+[Unit]
+Description=Claude Relay - WhatsApp to Claude Code Bridge
+Documentation=https://github.com/just-another-dude/claude-relay
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/claude-relay
+ExecStart=/usr/bin/node src/whatsapp.js
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment=NODE_ENV=production
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-relay
+
+[Install]
+WantedBy=multi-user.target

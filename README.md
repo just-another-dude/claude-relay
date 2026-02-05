@@ -167,26 +167,22 @@ tmux attach -t relay
 ### With systemd (production)
 
 ```bash
-sudo tee /etc/systemd/system/claude-relay.service << 'EOF'
-[Unit]
-Description=Claude Relay
-After=network.target
+# Install the service
+./systemd/install.sh
 
-[Service]
-Type=simple
-User=YOUR_USER
-WorkingDirectory=/path/to/claude-relay
-ExecStart=/usr/bin/node src/whatsapp.js
-Restart=on-failure
-RestartSec=10
+# Start the service
+sudo systemctl start claude-relay@$USER
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# Enable on boot
+sudo systemctl enable claude-relay@$USER
 
-sudo systemctl enable --now claude-relay
-sudo journalctl -u claude-relay -f
+# View logs
+journalctl -u claude-relay@$USER -f
 ```
+
+**Note:** Run `npm start` manually first to scan the QR code. After WhatsApp is authenticated, you can use the systemd service.
+
+To uninstall: `./systemd/uninstall.sh`
 
 ## Security
 
