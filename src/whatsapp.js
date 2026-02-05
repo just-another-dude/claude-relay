@@ -87,6 +87,9 @@ const CONFIG = {
 
     // Timeout for Claude operations (ms)
     timeout: 300000, // 5 minutes
+
+    // Supervisor mode - route all messages through AI supervisor first
+    supervisorEnabled: process.env.SUPERVISOR_ENABLED?.toLowerCase() === 'true',
 };
 
 // Validate config
@@ -100,6 +103,12 @@ if (!CONFIG.allowedGroupId) {
     } else {
         console.log('   ⚠️  No ALLOWED_NUMBER set - anyone in the group can send commands!');
     }
+}
+
+if (CONFIG.supervisorEnabled) {
+    console.log('🧠 Supervisor mode: ENABLED (Opus orchestrates all actions)');
+} else {
+    console.log('ℹ️  Supervisor mode: disabled (direct Claude Code mode)');
 }
 
 // Initialize WhatsApp client
@@ -591,10 +600,17 @@ client.on('message_create', async (msg) => {
                 break;
 
             case 'claude-code':
-                const ccPending = await msg.reply('⚙️ Sending to Claude Code...');
-                if (ccPending?.id?._serialized) sentReplies.add(ccPending.id._serialized);
-                const ccResult = await callBridge('claude-code', { prompt: cmd.content });
-                response = ccResult.response;
+                if (CONFIG.supervisorEnabled) {
+                    const supPending = await msg.reply('🧠 Processing with supervisor...');
+                    if (supPending?.id?._serialized) sentReplies.add(supPending.id._serialized);
+                    const supResult = await callBridge('supervisor', { prompt: cmd.content });
+                    response = supResult.response;
+                } else {
+                    const ccPending = await msg.reply('⚙️ Sending to Claude Code...');
+                    if (ccPending?.id?._serialized) sentReplies.add(ccPending.id._serialized);
+                    const ccResult = await callBridge('claude-code', { prompt: cmd.content });
+                    response = ccResult.response;
+                }
                 break;
                 
             case 'approve':

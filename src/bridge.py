@@ -601,44 +601,217 @@ class AnthropicAPI:
         except Exception as e:
             return f"❌ API Error: {str(e)}"
 
-    def summarize_claude_output(self, user_request: str, raw_output: str) -> str:
-        """Summarize Claude Code output for mobile-friendly reading"""
+
+class Supervisor:
+    """
+    AI Supervisor (Opus) that orchestrates all actions.
+    Receives user messages first and decides what to do.
+    """
+
+    TOOLS = [
+        {
+            "name": "send_to_claude_code",
+            "description": "Send a prompt to Claude Code CLI for coding tasks, file operations, git commands, or any development work. Claude Code has full access to the filesystem and can execute commands.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "The prompt to send to Claude Code",
+                    }
+                },
+                "required": ["prompt"],
+            },
+        },
+        {
+            "name": "run_shell_command",
+            "description": "Run a shell command directly on the system. Use for quick commands that don't need Claude Code's intelligence (ls, cat, git status, etc).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to execute",
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds (default 30)",
+                        "default": 30,
+                    },
+                },
+                "required": ["command"],
+            },
+        },
+        {
+            "name": "change_directory",
+            "description": "Change the working directory for Claude Code. Use when user wants to work on a different project.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The directory path or project name to switch to",
+                    }
+                },
+                "required": ["path"],
+            },
+        },
+        {
+            "name": "get_session_status",
+            "description": "Get the current status of the Claude Code session, including working directory and recent output.",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+        {
+            "name": "send_approval",
+            "description": "Send an approval (yes/no) to a pending Claude Code action.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "approved": {
+                        "type": "boolean",
+                        "description": "True to approve, False to reject",
+                    }
+                },
+                "required": ["approved"],
+            },
+        },
+        {
+            "name": "stop_claude_code",
+            "description": "Send Ctrl+C to stop the current Claude Code operation.",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    ]
+
+    SYSTEM_PROMPT = """You are an AI supervisor coordinating tasks on a developer's machine via WhatsApp.
+
+You have access to:
+1. Claude Code CLI - for coding, file editing, git operations, complex tasks
+2. Direct shell commands - for quick operations
+3. Session management - change directories, check status
+
+Guidelines:
+- For coding/development tasks: use send_to_claude_code
+- For simple queries (file listing, git status): use run_shell_command
+- For quick questions that don't need system access: just respond directly
+- Always provide clean, mobile-friendly responses
+- If Claude Code asks for approval, clearly present the options
+- Keep responses concise - the user is on mobile
+
+Current workspace info will be provided with each request."""
+
+    def __init__(self):
+        if not HAS_ANTHROPIC:
+            raise ImportError("anthropic package not installed")
+        if not Config.ANTHROPIC_API_KEY:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+        self.bridge = ClaudeCodeBridge()
+
+    def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
+        """Execute a tool and return the result"""
         try:
-            system_prompt = """You are a helpful assistant summarizing Claude Code CLI output for a mobile user.
+            if tool_name == "send_to_claude_code":
+                return self.bridge.send_prompt(tool_input["prompt"])
 
-Your job:
-1. Extract the key information from the raw terminal output
-2. Remove UI noise (box drawings, welcome banners, progress indicators)
-3. Provide a clear, concise summary of what happened or what Claude said
-4. If there are action items or questions, highlight them clearly
-5. If Claude is asking for approval, make that very clear with options
+            elif tool_name == "run_shell_command":
+                timeout = tool_input.get("timeout", 30)
+                result = subprocess.run(  # noqa: S602 - shell=True intentional for supervisor
+                    tool_input["command"],
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=self.bridge._current_workspace,
+                )
+                output = result.stdout + result.stderr
+                return output[: Config.MAX_OUTPUT] if output else "(no output)"
 
-Format for mobile:
-- Keep responses concise (under 500 words)
-- Use bullet points for lists
-- Use emojis sparingly for status (✅ ❌ ⚠️ 🔄)
-- If code was modified, briefly describe what changed
-- If there's an error, explain it simply
+            elif tool_name == "change_directory":
+                return self.bridge.change_directory(tool_input["path"])
 
-Never include raw terminal escape codes, box-drawing characters, or UI elements."""
+            elif tool_name == "get_session_status":
+                return self.bridge.get_status()
 
+            elif tool_name == "send_approval":
+                value = "yes" if tool_input["approved"] else "no"
+                return self.bridge.send_approval(value)
+
+            elif tool_name == "stop_claude_code":
+                return self.bridge.stop()
+
+            else:
+                return f"Unknown tool: {tool_name}"
+
+        except subprocess.TimeoutExpired:
+            return "⚠️ Command timed out"
+        except Exception as e:
+            return f"❌ Tool error: {str(e)}"
+
+    def process(self, user_message: str) -> str:
+        """Process a user message and return a response"""
+        try:
+            # Add context about current state
+            workspace = self.bridge._current_workspace
+            session = self.bridge._current_session_name
+
+            context = f"[Current workspace: {workspace}, Session: {session}]\n\nUser message: {user_message}"
+
+            messages = [{"role": "user", "content": context}]
+
+            # Initial API call
             response = self.client.messages.create(
                 model=Config.SUPERVISOR_MODEL,
-                max_tokens=1024,
-                system=system_prompt,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"User request: {user_request}\n\nRaw Claude Code output:\n```\n{raw_output}\n```\n\nProvide a clean, mobile-friendly summary:",
-                    }
-                ],
+                max_tokens=4096,
+                system=self.SYSTEM_PROMPT,
+                tools=self.TOOLS,
+                messages=messages,
             )
 
-            return response.content[0].text
+            # Handle tool use loop
+            while response.stop_reason == "tool_use":
+                # Extract tool calls
+                tool_results = []
+                assistant_content = response.content
+
+                for block in assistant_content:
+                    if block.type == "tool_use":
+                        tool_result = self._execute_tool(block.name, block.input)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": tool_result,
+                            }
+                        )
+
+                # Continue conversation with tool results
+                messages.append({"role": "assistant", "content": assistant_content})
+                messages.append({"role": "user", "content": tool_results})
+
+                response = self.client.messages.create(
+                    model=Config.SUPERVISOR_MODEL,
+                    max_tokens=4096,
+                    system=self.SYSTEM_PROMPT,
+                    tools=self.TOOLS,
+                    messages=messages,
+                )
+
+            # Extract final text response
+            for block in response.content:
+                if hasattr(block, "text"):
+                    return block.text
+
+            return "No response generated"
 
         except Exception as e:
-            # Fall back to raw output if summarization fails
-            return f"⚠️ Summary failed: {e}\n\nRaw output:\n{raw_output[:1500]}"
+            return f"❌ Supervisor error: {str(e)}"
 
 
 def main():
@@ -688,6 +861,18 @@ def main():
             else:
                 api = AnthropicAPI()
                 response = api.ask(prompt)
+
+        elif command == "supervisor":
+            prompt = input_data.get("prompt", "")
+            if not prompt:
+                response = "No message provided"
+            elif not HAS_ANTHROPIC:
+                response = "❌ anthropic package not installed. Run: pip install anthropic"
+            elif not Config.ANTHROPIC_API_KEY:
+                response = "❌ ANTHROPIC_API_KEY not set in .env"
+            else:
+                supervisor = Supervisor()
+                response = supervisor.process(prompt)
 
         elif command == "approve":
             value = input_data.get("value", "yes")
