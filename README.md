@@ -216,6 +216,29 @@ journalctl -u claude-relay@$USER -f
 
 To uninstall: `./systemd/uninstall.sh`
 
+### With launchd (macOS only)
+
+```bash
+# Install the service
+./launchd/install.sh
+
+# Start the service
+launchctl start com.claude-relay
+
+# Stop the service
+launchctl stop com.claude-relay
+
+# Check status
+launchctl list | grep claude-relay
+
+# View logs
+tail -f logs/launchd.log
+```
+
+**Note:** Run `npm start` manually first to scan the QR code. After WhatsApp is authenticated, you can use the launchd service.
+
+To uninstall: `./launchd/uninstall.sh`
+
 ## Security
 
 | Concern | Mitigation |
@@ -306,7 +329,7 @@ src/
 - [x] Audit logging
 - [x] Systemd service support
 - [x] macOS support
-- [ ] macOS launchd service
+- [x] macOS launchd service
 - [ ] File/image sharing
 - [ ] Multiple conversation threads
 - [ ] Rate limiting
