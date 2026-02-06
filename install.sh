@@ -20,16 +20,26 @@ echo
 
 # Detect OS
 OS="unknown"
+IS_WSL=false
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS="linux"
+    # Detect WSL (Windows Subsystem for Linux)
+    if [[ -f /proc/version ]] && grep -qi "microsoft\|WSL" /proc/version 2>/dev/null; then
+        IS_WSL=true
+    fi
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     OS="macos"
 else
     echo -e "${RED}Unsupported OS: $OSTYPE${NC}"
-    echo "Claude Relay supports Linux and macOS."
+    echo "Claude Relay supports Linux, macOS, and Windows (via WSL2)."
     exit 1
 fi
-echo -e "Detected OS: ${GREEN}$OS${NC}"
+
+if [[ "$IS_WSL" == true ]]; then
+    echo -e "Detected OS: ${GREEN}linux (WSL)${NC}"
+else
+    echo -e "Detected OS: ${GREEN}$OS${NC}"
+fi
 
 # Check prerequisites
 echo
@@ -150,6 +160,16 @@ else
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         ./launchd/install.sh
     fi
+fi
+
+# WSL-specific tips
+if [[ "$IS_WSL" == true ]]; then
+    echo
+    echo -e "${BOLD}WSL Tips${NC}"
+    echo "  - Your Windows files are at /mnt/c/Users/<YourName>/"
+    echo "  - Set CLAUDE_WORKSPACE to a WSL path (not /mnt/c/) for best performance"
+    echo "  - The QR code will display in your WSL terminal (Windows Terminal recommended)"
+    echo "  - Keep this WSL window open while the relay is running"
 fi
 
 # Done!

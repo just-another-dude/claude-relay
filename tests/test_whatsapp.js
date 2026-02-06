@@ -622,6 +622,12 @@ assert.ok(installerContent.includes('python3'), 'install.sh should check for pyt
 assert.ok(installerContent.includes('tmux'), 'install.sh should check for tmux');
 console.log('✓ install.sh checks for required prerequisites');
 
+// Installer detects WSL
+assert.ok(installerContent.includes('IS_WSL'), 'install.sh should have WSL detection variable');
+assert.ok(installerContent.includes('/proc/version'), 'install.sh should check /proc/version for WSL');
+assert.ok(installerContent.includes('microsoft'), 'install.sh should detect microsoft in /proc/version');
+console.log('✓ install.sh contains WSL detection logic');
+
 // systemd files exist
 const systemdDir = path.join(PROJECT_ROOT, 'systemd');
 assert.ok(fs.existsSync(systemdDir), 'systemd directory should exist');

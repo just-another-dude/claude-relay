@@ -67,7 +67,7 @@ Enable with `SUPERVISOR_ENABLED=true` in `.env`. Use `/clear` to start a fresh c
 | **Linux** (Ubuntu/Debian) | ✅ Fully supported | Primary development platform |
 | **Linux** (Other distros) | ✅ Fully supported | Use your package manager |
 | **macOS** | ✅ Supported | Install deps via Homebrew |
-| **Windows (WSL)** | ✅ Supported | Run inside WSL2 |
+| **Windows (WSL)** | ✅ Supported | Run inside WSL2 ([setup guide](#windows-wsl-setup)) |
 | **Windows (Native)** | ❌ Not supported | tmux not available natively |
 
 ## Quick Start
@@ -124,6 +124,52 @@ cp .env.example .env
 nano .env   # Configure authorization (see Configuration below)
 npm start
 ```
+
+</details>
+
+### Windows (WSL) Setup
+
+<details>
+<summary>Click to expand WSL setup steps</summary>
+
+#### Prerequisites
+
+1. **Install WSL2** (run in PowerShell as Administrator):
+   ```powershell
+   wsl --install
+   ```
+   This installs Ubuntu by default. Restart your computer when prompted.
+
+2. **Open Ubuntu** from the Start menu and complete the initial setup (username/password).
+
+3. **Recommended:** Install [Windows Terminal](https://aka.ms/terminal) for better QR code display.
+
+#### Install Dependencies (inside WSL)
+
+```bash
+sudo apt update && sudo apt install -y nodejs npm python3 tmux
+npm install -g @anthropic-ai/claude-code
+```
+
+#### Install Claude Relay
+
+```bash
+git clone https://github.com/just-another-dude/claude-relay.git
+cd claude-relay
+./install.sh
+```
+
+The installer will automatically detect WSL and show relevant tips.
+
+#### WSL-Specific Notes
+
+- **File access:** Your Windows files are at `/mnt/c/Users/<YourName>/`, but for best performance set `CLAUDE_WORKSPACE` to a path inside WSL (e.g., `~/projects`) rather than `/mnt/c/`
+- **QR code:** The QR code displays in your WSL terminal window — use Windows Terminal for best rendering
+- **Keep WSL running:** The relay needs the WSL window to stay open. Use tmux inside WSL to keep it running:
+  ```bash
+  tmux new -d -s relay 'npm start'
+  ```
+- **Autostart:** WSL doesn't use systemd by default. Use tmux or [enable systemd in WSL](https://learn.microsoft.com/en-us/windows/wsl/systemd) if you want the service to start automatically
 
 </details>
 
@@ -361,6 +407,7 @@ src/
 - [x] Systemd service support
 - [x] macOS support
 - [x] macOS launchd service
+- [x] Windows (WSL) setup guide
 - [ ] File/image sharing
 - [ ] Multiple conversation threads
 - [ ] Rate limiting
