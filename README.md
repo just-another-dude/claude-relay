@@ -60,16 +60,26 @@ When enabled, all messages go to an AI supervisor (Opus) first instead of direct
 
 Enable with `SUPERVISOR_ENABLED=true` in `.env`. Use `/clear` to start a fresh conversation.
 
+## Supported Platforms
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **Linux** (Ubuntu/Debian) | ✅ Fully supported | Primary development platform |
+| **Linux** (Other distros) | ✅ Fully supported | Use your package manager |
+| **macOS** | ✅ Supported | Install deps via Homebrew |
+| **Windows (WSL)** | ✅ Supported | Run inside WSL2 |
+| **Windows (Native)** | ❌ Not supported | tmux not available natively |
+
 ## Quick Start
 
 ### Prerequisites
 
-| Tool | Install |
-|------|---------|
-| Node.js 18+ | `sudo apt install nodejs npm` |
-| Python 3.9+ | `sudo apt install python3` |
-| tmux | `sudo apt install tmux` |
-| Claude Code | `npm install -g @anthropic-ai/claude-code` |
+| Tool | Linux (apt) | macOS (Homebrew) |
+|------|-------------|------------------|
+| Node.js 18+ | `sudo apt install nodejs npm` | `brew install node` |
+| Python 3.9+ | `sudo apt install python3` | `brew install python` |
+| tmux | `sudo apt install tmux` | `brew install tmux` |
+| Claude Code | `npm install -g @anthropic-ai/claude-code` | `npm install -g @anthropic-ai/claude-code` |
 
 ### Install & Run
 
@@ -176,7 +186,7 @@ SUPERVISOR_MODEL=claude-opus-4-6  # or claude-sonnet-4-20250514 for faster/cheap
 
 ## Running in Background
 
-### With tmux (simple)
+### With tmux (all platforms)
 
 ```bash
 tmux new -d -s relay 'npm start'
@@ -186,7 +196,7 @@ tmux attach -t relay
 # Detach: Ctrl+B then D
 ```
 
-### With systemd (production)
+### With systemd (Linux only)
 
 ```bash
 # Install the service
@@ -295,11 +305,14 @@ src/
 - [x] Per-project persistent sessions
 - [x] Audit logging
 - [x] Systemd service support
+- [x] macOS support
+- [ ] macOS launchd service
 - [ ] File/image sharing
 - [ ] Multiple conversation threads
 - [ ] Rate limiting
 - [ ] Telegram adapter
 - [ ] Web dashboard for logs
+- [ ] Native Windows support
 
 ## Development
 
