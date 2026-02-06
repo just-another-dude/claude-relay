@@ -623,7 +623,9 @@ class Supervisor:
 
     # File to store conversation history (persists across subprocess calls)
     # Temp path is intentional for persistence; configurable via SUPERVISOR_HISTORY_PATH env var
-    HISTORY_FILE = Path(os.environ.get("SUPERVISOR_HISTORY_PATH", "/tmp/claude-relay-supervisor-history.json"))  # noqa: S108  # nosec B108
+    HISTORY_FILE = Path(
+        os.environ.get("SUPERVISOR_HISTORY_PATH", "/tmp/claude-relay-supervisor-history.json")
+    )  # noqa: S108  # nosec B108
     MAX_HISTORY_MESSAGES = 50  # Keep last N messages to avoid token limits
 
     TOOLS = [
@@ -748,12 +750,14 @@ Current workspace info will be provided with each request."""
         try:
             # Trim to max messages (keep most recent)
             if len(self.history) > self.MAX_HISTORY_MESSAGES:
-                self.history = self.history[-self.MAX_HISTORY_MESSAGES:]
+                self.history = self.history[-self.MAX_HISTORY_MESSAGES :]
 
-            self.HISTORY_FILE.write_text(json.dumps({
-                "messages": self.history,
-                "updated": time.strftime("%Y-%m-%d %H:%M:%S")
-            }, indent=2))
+            self.HISTORY_FILE.write_text(
+                json.dumps(
+                    {"messages": self.history, "updated": time.strftime("%Y-%m-%d %H:%M:%S")},
+                    indent=2,
+                )
+            )
         except OSError as e:
             # Non-fatal - just log and continue
             print(f"Warning: Could not save history: {e}", file=sys.stderr)
