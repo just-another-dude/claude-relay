@@ -688,6 +688,65 @@ class TestSupervisor(unittest.TestCase):
                 output = json.loads(mock_stdout.getvalue())
                 self.assertIn("No message", output.get("response", ""))
 
+    def test_supervisor_has_history_file_config(self):
+        """Supervisor should have conversation history file path configured"""
+        import bridge
+
+        self.assertTrue(hasattr(bridge.Supervisor, "HISTORY_FILE"))
+        self.assertTrue(hasattr(bridge.Supervisor, "MAX_HISTORY_MESSAGES"))
+        self.assertGreater(bridge.Supervisor.MAX_HISTORY_MESSAGES, 0)
+
+    @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
+    def test_supervisor_clear_history(self):
+        """Supervisor should be able to clear conversation history"""
+        import bridge
+        import tempfile
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            import importlib
+
+            importlib.reload(bridge)
+
+            # Create a temporary history file
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                f.write('{"messages": [{"role": "user", "content": "test"}]}')
+                temp_path = f.name
+
+            try:
+                with patch.object(bridge.Supervisor, "HISTORY_FILE", Path(temp_path)):
+                    with patch.object(bridge.ClaudeCodeBridge, "__init__", return_value=None):
+                        supervisor = bridge.Supervisor.__new__(bridge.Supervisor)
+                        supervisor.bridge = Mock()
+                        supervisor.history = [{"role": "user", "content": "test"}]
+                        supervisor.clear_history()
+
+                        self.assertEqual(supervisor.history, [])
+                        self.assertFalse(Path(temp_path).exists())
+            finally:
+                # Clean up if file still exists
+                if Path(temp_path).exists():
+                    Path(temp_path).unlink()
+
+    def test_main_handles_clear_history_command(self):
+        """main() should handle clear-history command"""
+        import bridge
+
+        with patch("sys.stdin", StringIO('{"command": "clear-history"}')):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                # Mock Supervisor if anthropic is available
+                if HAS_ANTHROPIC:
+                    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                        import importlib
+
+                        importlib.reload(bridge)
+                        with patch.object(bridge.Supervisor, "clear_history"):
+                            bridge.main()
+                else:
+                    bridge.main()
+
+                output = json.loads(mock_stdout.getvalue())
+                self.assertIn("history", output.get("response", "").lower())
+
 
 class TestSupervisorSecurity(unittest.TestCase):
     """Security tests for Supervisor"""

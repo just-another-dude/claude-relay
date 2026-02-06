@@ -302,6 +302,9 @@ function parseCommand(text) {
     if (trimmed.startsWith('/sessions')) {
         return { type: 'sessions', content: '' };
     }
+    if (trimmed.startsWith('/clear')) {
+        return { type: 'clear', content: '' };
+    }
     if (trimmed === '1' || trimmed.toLowerCase() === 'yes' || trimmed.toLowerCase() === 'approve') {
         return { type: 'approve', content: 'yes' };
     }
@@ -396,6 +399,7 @@ continue - Continue current task
 *System:*
 /status - Session status
 /stop - Stop current operation
+/clear - Clear conversation history (fresh start)
 /help - This message
 
 *Shortcuts:*
@@ -640,6 +644,11 @@ client.on('message_create', async (msg) => {
             case 'sessions':
                 const sessionsResult = await callBridge('sessions');
                 response = sessionsResult.response;
+                break;
+
+            case 'clear':
+                const clearResult = await callBridge('clear-history');
+                response = clearResult.response;
                 break;
 
             default:

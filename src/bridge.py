@@ -618,7 +618,12 @@ class Supervisor:
     """
     AI Supervisor (Opus) that orchestrates all actions.
     Receives user messages first and decides what to do.
+    Maintains conversation history for context persistence.
     """
+
+    # File to store conversation history (persists across subprocess calls)
+    HISTORY_FILE = Path(os.environ.get("SUPERVISOR_HISTORY_PATH", "/tmp/claude-relay-supervisor-history.json"))
+    MAX_HISTORY_MESSAGES = 50  # Keep last N messages to avoid token limits
 
     TOOLS = [
         {
@@ -725,6 +730,38 @@ Current workspace info will be provided with each request."""
 
         self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
         self.bridge = ClaudeCodeBridge()
+        self.history = self._load_history()
+
+    def _load_history(self) -> list:
+        """Load conversation history from file"""
+        try:
+            if self.HISTORY_FILE.exists():
+                data = json.loads(self.HISTORY_FILE.read_text())
+                return data.get("messages", [])
+        except (json.JSONDecodeError, IOError):
+            pass
+        return []
+
+    def _save_history(self):
+        """Save conversation history to file"""
+        try:
+            # Trim to max messages (keep most recent)
+            if len(self.history) > self.MAX_HISTORY_MESSAGES:
+                self.history = self.history[-self.MAX_HISTORY_MESSAGES:]
+
+            self.HISTORY_FILE.write_text(json.dumps({
+                "messages": self.history,
+                "updated": time.strftime("%Y-%m-%d %H:%M:%S")
+            }, indent=2))
+        except IOError as e:
+            # Non-fatal - just log and continue
+            print(f"Warning: Could not save history: {e}", file=sys.stderr)
+
+    def clear_history(self):
+        """Clear conversation history"""
+        self.history = []
+        if self.HISTORY_FILE.exists():
+            self.HISTORY_FILE.unlink()
 
     def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
         """Execute a tool and return the result"""
@@ -776,7 +813,9 @@ Current workspace info will be provided with each request."""
 
             context = f"[Current workspace: {workspace}, Session: {session}]\n\nUser message: {user_message}"
 
-            messages = [{"role": "user", "content": context}]
+            # Start with history and add new user message
+            messages = self.history.copy()
+            messages.append({"role": "user", "content": context})
 
             # Initial API call
             response = self.client.messages.create(
@@ -827,11 +866,20 @@ Current workspace info will be provided with each request."""
                 )
 
             # Extract final text response
+            final_response = "No response generated"
+            final_content = []
             for block in response.content:
                 if hasattr(block, "text"):
-                    return block.text
+                    final_content.append({"type": "text", "text": block.text})
+                    final_response = block.text
 
-            return "No response generated"
+            # Save the user message and final assistant response to history
+            # (we only save the final exchange, not intermediate tool calls)
+            self.history.append({"role": "user", "content": context})
+            self.history.append({"role": "assistant", "content": final_content})
+            self._save_history()
+
+            return final_response
 
         except Exception as e:
             return f"❌ Supervisor error: {sanitize_error(e)}"
@@ -896,6 +944,15 @@ def main():
             else:
                 supervisor = Supervisor()
                 response = supervisor.process(prompt)
+
+        elif command == "clear-history":
+            # Clear supervisor conversation history
+            if HAS_ANTHROPIC and Config.ANTHROPIC_API_KEY:
+                supervisor = Supervisor()
+                supervisor.clear_history()
+                response = "🧹 Conversation history cleared. Starting fresh."
+            else:
+                response = "🧹 No history to clear (supervisor not enabled)."
 
         elif command == "approve":
             value = input_data.get("value", "yes")

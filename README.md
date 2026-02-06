@@ -56,8 +56,9 @@ When enabled, all messages go to an AI supervisor (Opus) first instead of direct
 - **Executes tools** — Claude Code, shell commands, directory changes
 - **Returns clean responses** — No terminal noise, mobile-friendly formatting
 - **Handles complex tasks** — Multi-step operations coordinated intelligently
+- **Remembers context** — Conversation history persists across messages
 
-Enable with `SUPERVISOR_ENABLED=true` in `.env`.
+Enable with `SUPERVISOR_ENABLED=true` in `.env`. Use `/clear` to start a fresh conversation.
 
 ## Quick Start
 
@@ -98,6 +99,7 @@ Then send `/help` to get started.
 | `/pwd` | Show current session info |
 | `/status` | Show session info |
 | `/stop` | Send Ctrl+C to Claude |
+| `/clear` | Clear conversation history (fresh start) |
 | `/groupid` | Show current chat ID |
 | `1` / `yes` / `approve` | Approve pending action |
 | `2` / `no` / `reject` | Reject pending action |
