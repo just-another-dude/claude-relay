@@ -72,7 +72,40 @@ Enable with `SUPERVISOR_ENABLED=true` in `.env`. Use `/clear` to start a fresh c
 
 ## Quick Start
 
-### Prerequisites
+### One-Command Install
+
+```bash
+# Install prerequisites first (if needed)
+# Linux: sudo apt install nodejs npm python3 tmux
+# macOS: brew install node python tmux
+
+# Then install Claude Relay
+git clone https://github.com/just-another-dude/claude-relay.git
+cd claude-relay
+./install.sh
+```
+
+The installer will:
+- Check prerequisites
+- Install dependencies
+- Guide you through configuration
+- Optionally set up background service
+
+### First Run
+
+```bash
+npm start
+```
+
+1. Scan the QR code with WhatsApp (**Linked Devices → Link a Device**)
+2. Send `/help` in WhatsApp to get started
+
+### Manual Installation
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+#### Prerequisites
 
 | Tool | Linux (apt) | macOS (Homebrew) |
 |------|-------------|------------------|
@@ -81,20 +114,18 @@ Enable with `SUPERVISOR_ENABLED=true` in `.env`. Use `/clear` to start a fresh c
 | tmux | `sudo apt install tmux` | `brew install tmux` |
 | Claude Code | `npm install -g @anthropic-ai/claude-code` | `npm install -g @anthropic-ai/claude-code` |
 
-### Install & Run
+#### Steps
 
 ```bash
 git clone https://github.com/just-another-dude/claude-relay.git
 cd claude-relay
 npm install
 cp .env.example .env
-nano .env   # Configure authorization (see below)
+nano .env   # Configure authorization (see Configuration below)
 npm start
 ```
 
-On first run, scan the QR code with WhatsApp (**Linked Devices → Link a Device**).
-
-Then send `/help` to get started.
+</details>
 
 ## Usage
 
