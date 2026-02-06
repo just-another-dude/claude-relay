@@ -623,9 +623,8 @@ class Supervisor:
 
     # File to store conversation history (persists across subprocess calls)
     # Temp path is intentional for persistence; configurable via SUPERVISOR_HISTORY_PATH env var
-    HISTORY_FILE = Path(
-        os.environ.get("SUPERVISOR_HISTORY_PATH", "/tmp/claude-relay-supervisor-history.json")
-    )  # noqa: S108  # nosec B108
+    _DEFAULT_HISTORY_PATH = "/tmp/claude-relay-supervisor-history.json"  # noqa: S108  # nosec B108
+    HISTORY_FILE = Path(os.environ.get("SUPERVISOR_HISTORY_PATH", _DEFAULT_HISTORY_PATH))
     MAX_HISTORY_MESSAGES = 50  # Keep last N messages to avoid token limits
 
     TOOLS = [
