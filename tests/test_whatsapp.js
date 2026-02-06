@@ -5,6 +5,11 @@
  */
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+// Project root directory
+const PROJECT_ROOT = path.join(__dirname, '..');
 
 // Mock CONFIG for testing
 const CONFIG = {
@@ -46,6 +51,9 @@ function parseCommand(text) {
     }
     if (trimmed.toLowerCase() === 'continue') {
         return { type: 'continue', content: '' };
+    }
+    if (trimmed.startsWith('/clear')) {
+        return { type: 'clear', content: '' };
     }
 
     return { type: 'claude-code', content: trimmed };
@@ -244,6 +252,14 @@ assert.deepStrictEqual(
     'parseCommand_withWhitespace_trimsInput'
 );
 console.log('✓ parseCommand_withWhitespace_trimsInput');
+
+// /clear command
+assert.deepStrictEqual(
+    parseCommand('/clear'),
+    { type: 'clear', content: '' },
+    'parseCommand_withClear_returnsClearType'
+);
+console.log('✓ parseCommand_withClear_returnsClearType');
 
 console.log('');
 
@@ -578,6 +594,78 @@ assert.strictEqual(
     'isAuthorized_emptyGroupConfig_rejectsGroupMessages'
 );
 console.log('✓ isAuthorized_emptyGroupConfig_rejectsGroupMessages');
+
+console.log('');
+
+// ============================================================================
+// TESTS: Project Structure and Installation Files
+// ============================================================================
+
+console.log('=== Project Structure Tests ===\n');
+
+// Main installer exists and is executable
+const installerPath = path.join(PROJECT_ROOT, 'install.sh');
+assert.ok(fs.existsSync(installerPath), 'install.sh should exist');
+const installerStats = fs.statSync(installerPath);
+assert.ok(installerStats.mode & fs.constants.S_IXUSR, 'install.sh should be executable');
+console.log('✓ install.sh exists and is executable');
+
+// Installer contains OS detection
+const installerContent = fs.readFileSync(installerPath, 'utf8');
+assert.ok(installerContent.includes('darwin'), 'install.sh should detect macOS');
+assert.ok(installerContent.includes('linux'), 'install.sh should detect Linux');
+console.log('✓ install.sh contains OS detection for Linux and macOS');
+
+// Installer checks prerequisites
+assert.ok(installerContent.includes('node'), 'install.sh should check for node');
+assert.ok(installerContent.includes('python3'), 'install.sh should check for python3');
+assert.ok(installerContent.includes('tmux'), 'install.sh should check for tmux');
+console.log('✓ install.sh checks for required prerequisites');
+
+// systemd files exist
+const systemdDir = path.join(PROJECT_ROOT, 'systemd');
+assert.ok(fs.existsSync(systemdDir), 'systemd directory should exist');
+assert.ok(fs.existsSync(path.join(systemdDir, 'install.sh')), 'systemd/install.sh should exist');
+assert.ok(fs.existsSync(path.join(systemdDir, 'uninstall.sh')), 'systemd/uninstall.sh should exist');
+assert.ok(fs.existsSync(path.join(systemdDir, 'claude-relay.service')), 'systemd service file should exist');
+console.log('✓ systemd directory contains required files');
+
+// launchd files exist (macOS support)
+const launchdDir = path.join(PROJECT_ROOT, 'launchd');
+assert.ok(fs.existsSync(launchdDir), 'launchd directory should exist');
+assert.ok(fs.existsSync(path.join(launchdDir, 'install.sh')), 'launchd/install.sh should exist');
+assert.ok(fs.existsSync(path.join(launchdDir, 'uninstall.sh')), 'launchd/uninstall.sh should exist');
+assert.ok(fs.existsSync(path.join(launchdDir, 'com.claude-relay.plist')), 'launchd plist should exist');
+console.log('✓ launchd directory contains required files');
+
+// launchd install.sh is executable
+const launchdInstaller = path.join(launchdDir, 'install.sh');
+const launchdStats = fs.statSync(launchdInstaller);
+assert.ok(launchdStats.mode & fs.constants.S_IXUSR, 'launchd/install.sh should be executable');
+console.log('✓ launchd/install.sh is executable');
+
+// launchd plist is valid XML (basic check)
+const plistContent = fs.readFileSync(path.join(launchdDir, 'com.claude-relay.plist'), 'utf8');
+assert.ok(plistContent.includes('<?xml'), 'plist should have XML declaration');
+assert.ok(plistContent.includes('<plist'), 'plist should have plist tag');
+assert.ok(plistContent.includes('com.claude-relay'), 'plist should have correct label');
+console.log('✓ launchd plist has valid structure');
+
+// launchd install.sh detects macOS
+const launchdInstallerContent = fs.readFileSync(launchdInstaller, 'utf8');
+assert.ok(launchdInstallerContent.includes('Darwin'), 'launchd/install.sh should check for macOS');
+assert.ok(launchdInstallerContent.includes('/opt/homebrew'), 'launchd/install.sh should support Apple Silicon');
+assert.ok(launchdInstallerContent.includes('/usr/local'), 'launchd/install.sh should support Intel Macs');
+console.log('✓ launchd/install.sh supports both Apple Silicon and Intel Macs');
+
+// .env.example exists
+assert.ok(fs.existsSync(path.join(PROJECT_ROOT, '.env.example')), '.env.example should exist');
+console.log('✓ .env.example exists');
+
+// Source files exist
+assert.ok(fs.existsSync(path.join(PROJECT_ROOT, 'src', 'whatsapp.js')), 'src/whatsapp.js should exist');
+assert.ok(fs.existsSync(path.join(PROJECT_ROOT, 'src', 'bridge.py')), 'src/bridge.py should exist');
+console.log('✓ Source files exist');
 
 console.log('');
 console.log('=== All Tests Passed ===\n');
