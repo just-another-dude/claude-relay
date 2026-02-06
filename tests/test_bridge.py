@@ -699,8 +699,9 @@ class TestSupervisor(unittest.TestCase):
     @unittest.skipUnless(HAS_ANTHROPIC, "anthropic package not installed")
     def test_supervisor_clear_history(self):
         """Supervisor should be able to clear conversation history"""
-        import bridge
         import tempfile
+
+        import bridge
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             import importlib
