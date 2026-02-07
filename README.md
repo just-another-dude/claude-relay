@@ -37,95 +37,157 @@ Running Claude Code from a phone terminal is painful — tiny screen, no code re
 
 **Ideal for:** babysitting long-running tasks, quick approvals, simple prompts, monitoring progress while away from your desk.
 
-## Features
-
-- **WhatsApp native** — Chat keyboard, voice-to-text, push notifications
-- **Supervisor mode (NEW)** — Opus AI orchestrates all actions, providing clean, intelligent responses
-- **Claude Code integration** — Full CLI access through tmux with per-project sessions
-- **Direct API mode** — Quick questions via `/ask` (no CLI needed)
-- **Voice messages** — Speak your prompts (Google or OpenAI Whisper API transcription)
-- **Secure by default** — Group + sender whitelist authorization with audit logging
-- **Session persistence** — Claude keeps working when you disconnect
-- **Quick approvals** — Just send `1` or `2`
-
-### Supervisor Mode
-
-When enabled, all messages go to an AI supervisor (Opus) first instead of directly to Claude Code. The supervisor:
-
-- **Analyzes your request** and decides the best approach
-- **Executes tools** — Claude Code, shell commands, directory changes
-- **Returns clean responses** — No terminal noise, mobile-friendly formatting
-- **Handles complex tasks** — Multi-step operations coordinated intelligently
-- **Remembers context** — Conversation history persists across messages
-
-Enable with `SUPERVISOR_ENABLED=true` in `.env`. Use `/clear` to start a fresh conversation.
-
-## Supported Platforms
-
-| Platform | Status | Notes |
-|----------|--------|-------|
-| **Linux** (Ubuntu/Debian) | ✅ Fully supported | Primary development platform |
-| **Linux** (Other distros) | ✅ Fully supported | Use your package manager |
-| **macOS** | ✅ Supported | Install deps via Homebrew |
-| **Windows (WSL)** | ✅ Supported | Run inside WSL2 ([setup guide](#windows-wsl-setup)) |
-| **Windows (Native)** | ❌ Not supported | tmux not available natively |
-
-## Quick Start
-
-### One-Command Install
+## Install
 
 ```bash
-# Install prerequisites first (if needed)
-# Linux: sudo apt install nodejs npm python3 tmux
-# macOS: brew install node python tmux
-
-# Then install Claude Relay
 git clone https://github.com/just-another-dude/claude-relay.git
 cd claude-relay
 ./install.sh
 ```
 
-The installer will:
-- Check prerequisites
-- Install dependencies
-- Guide you through configuration
-- Optionally set up background service
+The installer checks prerequisites, installs dependencies, and launches an interactive setup wizard that walks you through configuration. It takes about 2 minutes.
 
-### First Run
+> **Prerequisites:** Node.js 18+, Python 3.9+, tmux, [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview).
+> Install them first if needed:
+> - **Linux:** `sudo apt install nodejs npm python3 tmux`
+> - **macOS:** `brew install node python tmux`
+> - **Then:** `npm install -g @anthropic-ai/claude-code`
+
+After installation, start the relay and scan the QR code with WhatsApp (**Linked Devices > Link a Device**):
 
 ```bash
 npm start
 ```
 
-1. Scan the QR code with WhatsApp (**Linked Devices → Link a Device**)
-2. Send `/help` in WhatsApp to get started
+Send `/help` in WhatsApp to verify it's working.
 
-### Manual Installation
+> To reconfigure at any time: `npm run setup`
 
-<details>
-<summary>Click to expand manual steps</summary>
+## Supervisor Mode
 
-#### Prerequisites
+Supervisor mode is the recommended way to use Claude Relay. When enabled, an AI supervisor (Opus) sits between you and Claude Code. Instead of getting raw terminal output on your phone, you get clean, intelligent responses.
 
-| Tool | Linux (apt) | macOS (Homebrew) |
-|------|-------------|------------------|
-| Node.js 18+ | `sudo apt install nodejs npm` | `brew install node` |
-| Python 3.9+ | `sudo apt install python3` | `brew install python` |
-| tmux | `sudo apt install tmux` | `brew install tmux` |
-| Claude Code | `npm install -g @anthropic-ai/claude-code` | `npm install -g @anthropic-ai/claude-code` |
+### What the supervisor does
 
-#### Steps
+The supervisor receives every message you send and decides the best way to handle it. It has six tools at its disposal:
+
+| Tool | What it does |
+|------|-------------|
+| **Claude Code** | Sends prompts to the Claude Code CLI for coding, file edits, git operations, and complex development tasks |
+| **Shell commands** | Runs commands directly (ls, git status, cat, etc.) for quick operations that don't need Claude Code |
+| **Change directory** | Switches projects — creates or resumes per-project tmux sessions |
+| **Session status** | Checks what Claude Code is doing, whether it needs approval, recent output |
+| **Send approval** | Approves or rejects pending Claude Code actions on your behalf |
+| **Stop** | Sends Ctrl+C to cancel the current operation |
+
+The supervisor chooses the right tool automatically. Ask "what branch am I on?" and it runs `git branch`. Ask "refactor the auth module" and it delegates to Claude Code. Ask "what's the capital of France?" and it just answers directly — no tools needed.
+
+### Why supervisor mode matters on mobile
+
+Without supervisor mode, you get raw tmux terminal output — ANSI escape codes, prompt lines, truncated text. Supervisor mode transforms that into clean, readable messages optimized for a phone screen.
+
+It also coordinates multi-step operations. If a task requires running a command, checking the output, then making a decision, the supervisor handles that loop internally and gives you one coherent response.
+
+### Conversation memory
+
+The supervisor remembers your conversation across messages. You can say "fix the login bug", then follow up with "now add a test for that" and it knows what "that" refers to. History persists until you send `/clear`.
+
+### Enable it
+
+Supervisor mode requires an Anthropic API key. The setup wizard (`./install.sh` or `npm run setup`) configures this for you. Or edit `.env` manually:
 
 ```bash
-git clone https://github.com/just-another-dude/claude-relay.git
-cd claude-relay
-npm install
-cp .env.example .env
-nano .env   # Configure authorization (see Configuration below)
-npm start
+ANTHROPIC_API_KEY=sk-ant-...
+SUPERVISOR_ENABLED=true
+SUPERVISOR_MODEL=claude-opus-4-6
 ```
 
-</details>
+Use `claude-sonnet-4-20250514` instead of `claude-opus-4-6` for faster, cheaper responses.
+
+## Commands
+
+| Send in WhatsApp | What happens |
+|------|------|
+| `fix the login bug` | Sent to Claude Code (or supervisor) |
+| `/cc refactor auth module` | Explicitly send to Claude Code |
+| `/ask explain OAuth2 in 3 sentences` | Direct API call (bypasses supervisor and Claude Code) |
+| `/cd ~/git/my-project` | Switch to a project directory |
+| `/pwd` | Show current session and workspace |
+| `/sessions` | List all active Claude Code sessions |
+| `/status` | Show session status and recent output |
+| `/stop` | Send Ctrl+C to Claude Code |
+| `/clear` | Clear supervisor conversation history |
+| `/groupid` | Show the current chat's group ID |
+| `1` / `yes` / `approve` | Approve pending action |
+| `2` / `no` / `reject` | Reject pending action |
+| `continue` | Continue current task |
+| `/help` | Show command list |
+| *[Voice note]* | Transcribed and sent to Claude Code |
+
+Messages without a `/` prefix go to Claude Code by default (or to the supervisor, if enabled).
+
+### Example conversation
+
+```
+You:     refactor the database connection pool
+Claude:  ⚙️ Sending to Claude Code...
+Claude:  I'll refactor the connection pool. I want to modify
+         db/pool.py and db/config.py. [1] Approve [2] Reject
+
+You:     1
+
+Claude:  ✅ Done. Refactored connection pool to use async context
+         managers. Added connection health checks and auto-retry.
+```
+
+## Configuration
+
+The setup wizard (`npm run setup`) handles all of this interactively. For reference, here are all the options in `.env`:
+
+```bash
+# === Authorization ===
+# Group mode (recommended): restrict to a specific WhatsApp group + sender
+ALLOWED_GROUP_ID=123456789012345678@g.us
+ALLOWED_NUMBER=1234567890
+
+# Self-chat mode: leave both empty, only messages to yourself work
+# To find your group ID: start the relay, send /groupid in the group
+
+# === API Key ===
+# Required for /ask, supervisor mode
+ANTHROPIC_API_KEY=sk-ant-...
+
+# === Claude Code ===
+CLAUDE_MODEL=claude-sonnet-4-20250514
+TMUX_SESSION=claude-relay
+CLAUDE_WORKSPACE=~/claude-workspace
+READ_TIMEOUT=30
+MAX_OUTPUT=3000
+
+# === Voice Transcription ===
+# Requires https://github.com/just-another-dude/audio-transcriber
+TRANSCRIBER_PATH=~/git/audio-transcriber
+TRANSCRIBER_ENGINE=google     # google (free) or openai (Whisper API)
+OPENAI_API_KEY=sk-...         # required for openai engine
+
+# === Supervisor Mode ===
+SUPERVISOR_ENABLED=true
+SUPERVISOR_MODEL=claude-opus-4-6
+
+# === Audit Logging ===
+AUDIT_LOG_ENABLED=true
+AUDIT_LOG_PATH=./logs/audit.log
+```
+
+## Supported Platforms
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **Linux** (Ubuntu/Debian) | Fully supported | Primary development platform |
+| **Linux** (Other distros) | Fully supported | Use your package manager |
+| **macOS** | Supported | Install deps via Homebrew |
+| **Windows (WSL)** | Supported | Run inside WSL2 ([setup guide](#windows-wsl-setup)) |
+| **Windows (Native)** | Not supported | tmux not available natively |
 
 ### Windows (WSL) Setup
 
@@ -159,7 +221,7 @@ cd claude-relay
 ./install.sh
 ```
 
-The installer will automatically detect WSL and show relevant tips.
+The installer automatically detects WSL and shows relevant tips.
 
 #### WSL-Specific Notes
 
@@ -173,93 +235,21 @@ The installer will automatically detect WSL and show relevant tips.
 
 </details>
 
-## Usage
+### Manual Installation
 
-### Commands
-
-| Send | Does |
-|------|------|
-| `fix the login bug` | → Claude Code |
-| `/cc refactor auth module` | → Claude Code (explicit) |
-| `/ask explain OAuth2 in 3 sentences` | → Direct API (Sonnet) |
-| `/cd ~/git/my-project` | Change working directory |
-| `/pwd` | Show current session info |
-| `/status` | Show session info |
-| `/stop` | Send Ctrl+C to Claude |
-| `/clear` | Clear conversation history (fresh start) |
-| `/groupid` | Show current chat ID |
-| `1` / `yes` / `approve` | Approve pending action |
-| `2` / `no` / `reject` | Reject pending action |
-| `continue` | Continue current task |
-| `/help` | Show commands |
-| [Voice note] | Transcribe → Claude Code |
-
-Messages without a prefix go to Claude Code by default.
-
-### Workflow Example
-
-```
-You:     refactor the database connection pool
-Claude:  ⚙️ Sending to Claude Code...
-Claude:  I'll refactor the connection pool. I want to modify
-         db/pool.py and db/config.py. [1] Approve [2] Reject
-
-You:     1
-
-Claude:  ✅ Done. Refactored connection pool to use async context
-         managers. Added connection health checks and auto-retry...
-```
-
-### Voice Messages (Optional)
-
-Send a voice note and it will be:
-1. Transcribed using your configured engine (Google, Whisper, or Vosk)
-2. Sent to Claude Code as a text prompt
-3. Response delivered back to WhatsApp
-
-Requires [audio-transcriber](https://github.com/just-another-dude/audio-transcriber) to be set up. If not configured, voice messages will return a helpful setup message instead of failing.
-
-## Configuration
-
-Copy `.env.example` to `.env`:
+<details>
+<summary>Click to expand manual steps</summary>
 
 ```bash
-# Authorization Mode 1: Group + Sender (recommended)
-# Only accept messages from a specific group AND specific number
-ALLOWED_GROUP_ID=123456789012345678@g.us
-ALLOWED_NUMBER=1234567890
-
-# Authorization Mode 2: Direct Messages (leave GROUP_ID empty)
-# Only accepts messages you send to yourself
-ALLOWED_GROUP_ID=
-ALLOWED_NUMBER=
-
-# To find your group ID, start the relay and send /groupid in the group
-# The ID should look like: 120363424984613855@g.us
+git clone https://github.com/just-another-dude/claude-relay.git
+cd claude-relay
+npm install
+cp .env.example .env
+nano .env   # configure authorization and API key
+npm start
 ```
 
-### Additional Options
-
-```bash
-# For /ask command (direct API queries)
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Claude Code settings
-CLAUDE_MODEL=claude-sonnet-4-20250514
-TMUX_SESSION=claude-relay
-CLAUDE_WORKSPACE=~/claude-workspace
-READ_TIMEOUT=30
-MAX_OUTPUT=3000
-
-# Voice transcription (requires audio-transcriber)
-TRANSCRIBER_PATH=~/git/audio-transcriber
-TRANSCRIBER_ENGINE=google  # google (free), openai (Whisper API), whisper, or vosk
-OPENAI_API_KEY=sk-...      # Required for openai engine
-
-# Supervisor mode (recommended for mobile use)
-SUPERVISOR_ENABLED=true
-SUPERVISOR_MODEL=claude-opus-4-6  # or claude-sonnet-4-20250514 for faster/cheaper
-```
+</details>
 
 ## Running in Background
 
@@ -276,45 +266,25 @@ tmux attach -t relay
 ### With systemd (Linux only)
 
 ```bash
-# Install the service
 ./systemd/install.sh
-
-# Start the service
 sudo systemctl start claude-relay@$USER
-
-# Enable on boot
-sudo systemctl enable claude-relay@$USER
-
-# View logs
-journalctl -u claude-relay@$USER -f
+sudo systemctl enable claude-relay@$USER    # start on boot
+journalctl -u claude-relay@$USER -f         # view logs
 ```
-
-**Note:** Run `npm start` manually first to scan the QR code. After WhatsApp is authenticated, you can use the systemd service.
 
 To uninstall: `./systemd/uninstall.sh`
 
 ### With launchd (macOS only)
 
 ```bash
-# Install the service
 ./launchd/install.sh
-
-# Start the service
 launchctl start com.claude-relay
-
-# Stop the service
-launchctl stop com.claude-relay
-
-# Check status
-launchctl list | grep claude-relay
-
-# View logs
-tail -f logs/launchd.log
+tail -f logs/launchd.log                    # view logs
 ```
 
-**Note:** Run `npm start` manually first to scan the QR code. After WhatsApp is authenticated, you can use the launchd service.
-
 To uninstall: `./launchd/uninstall.sh`
+
+> **Note:** Run `npm start` manually first to scan the QR code. After WhatsApp is authenticated, you can switch to background service.
 
 ## Security
 
@@ -327,7 +297,7 @@ To uninstall: `./launchd/uninstall.sh`
 
 ### Authorization Model
 
-The relay uses a two-layer authorization:
+Two-layer authorization:
 
 1. **Group filter** — Only messages from the configured `ALLOWED_GROUP_ID` are processed
 2. **Sender filter** — Only messages from `ALLOWED_NUMBER` within that group are acted on
@@ -339,33 +309,11 @@ If no group is configured, it falls back to "message yourself" mode (only your o
 All commands and authorization attempts are logged to `logs/audit.log` (JSON format):
 
 ```bash
-# View recent activity
-tail -f logs/audit.log | jq .
-
-# Search for rejected attempts
-grep AUTH_REJECT logs/audit.log | jq .
-
-# Search for errors
-grep CMD_ERROR logs/audit.log | jq .
+tail -f logs/audit.log | jq .              # live feed
+grep AUTH_REJECT logs/audit.log | jq .     # rejected attempts
 ```
 
-Log events:
-- `SERVICE_START` / `SERVICE_STOP` — Relay lifecycle
-- `AUTH_REJECT` — Unauthorized message attempts (includes sender info)
-- `CMD_RECEIVED` / `CMD_SUCCESS` / `CMD_ERROR` — Command execution
-- `VOICE_RECEIVED` / `VOICE_TRANSCRIBED` / `VOICE_SUCCESS` — Voice messages
-
-Configure in `.env`:
-```bash
-AUDIT_LOG_ENABLED=true          # Enable/disable (default: true)
-AUDIT_LOG_PATH=./logs/audit.log # Log file location
-```
-
-### Recommended Additions
-
-- **Tailscale** — Private network, no port forwarding
-- **SSH hardening** — Key-only auth, fail2ban
-- **Firewall** — UFW rules for minimal exposure
+Log events: `SERVICE_START`, `SERVICE_STOP`, `AUTH_REJECT`, `CMD_RECEIVED`, `CMD_SUCCESS`, `CMD_ERROR`, `VOICE_RECEIVED`, `VOICE_TRANSCRIBED`, `VOICE_SUCCESS`.
 
 ## Architecture
 
@@ -375,16 +323,19 @@ src/
 │                 # Handles: auth, QR code, message parsing, routing,
 │                 #          voice message handling, authorization
 │
-└── bridge.py     # Python bridge
-                  # Handles: tmux session management, Claude Code CLI,
-                  #          Anthropic API calls, audio transcription
+├── bridge.py     # Python bridge
+│                 # Handles: tmux session management, Claude Code CLI,
+│                 #          Anthropic API calls, supervisor, audio transcription
+│
+└── setup.js      # Interactive setup wizard (inquirer)
+                  # Handles: configuration prompts, .env generation, validation
 ```
 
 **Message flow:**
-1. WhatsApp message → `whatsapp.js` checks authorization & parses command
+1. WhatsApp message arrives in `whatsapp.js` — authorization check, command parsing
 2. Spawns `bridge.py` with JSON on stdin
-3. Bridge routes to Claude Code (tmux), Anthropic API, or transcriber
-4. Response JSON on stdout → WhatsApp reply
+3. Bridge routes to supervisor, Claude Code (tmux), Anthropic API, or transcriber
+4. Response JSON on stdout back to WhatsApp
 
 ## Troubleshooting
 
@@ -397,36 +348,32 @@ src/
 | Claude Code not found | `npm install -g @anthropic-ai/claude-code` |
 | Voice transcription fails | Check `TRANSCRIBER_PATH` and engine setup |
 | Messages ignored | Check `ALLOWED_GROUP_ID` and `ALLOWED_NUMBER` |
+| Supervisor errors | Check `ANTHROPIC_API_KEY` is set and valid |
+
+## Development
+
+```bash
+npm test              # JavaScript tests (whatsapp + setup)
+npm run test:py       # Python tests
+npm run test:all      # All tests
+npm run lint:py       # Ruff linting
+npm run setup         # Re-run setup wizard
+```
 
 ## Roadmap
 
-- [x] Voice message transcription (Google, OpenAI Whisper API)
-- [x] Supervisor mode (AI orchestrates actions)
+- [x] Supervisor mode (AI orchestrates all actions)
+- [x] Voice message transcription (Google, OpenAI Whisper)
 - [x] Per-project persistent sessions
 - [x] Audit logging
-- [x] Systemd service support
-- [x] macOS support
-- [x] macOS launchd service
-- [x] Windows (WSL) setup guide
+- [x] Interactive setup wizard
+- [x] Systemd + launchd services
+- [x] macOS and Windows (WSL) support
 - [ ] File/image sharing
 - [ ] Multiple conversation threads
 - [ ] Rate limiting
 - [ ] Telegram adapter
 - [ ] Web dashboard for logs
-- [ ] Native Windows support
-
-## Development
-
-```bash
-# Run tests
-npm test              # JavaScript tests
-npm run test:py       # Python tests
-npm run test:all      # All tests
-
-# Linting
-npm run lint:py       # Ruff check
-npm run lint:fix      # Auto-fix lint issues
-```
 
 ## Contributing
 
