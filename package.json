@@ -5,7 +5,8 @@
   "main": "src/whatsapp.js",
   "scripts": {
     "start": "node src/whatsapp.js",
-    "test": "node tests/test_whatsapp.js",
+    "setup": "node src/setup.js",
+    "test": "node tests/test_whatsapp.js && node tests/test_setup.js",
     "test:py": "python3 -m pytest tests/test_bridge.py -v",
     "test:all": "npm test && npm run test:py",
     "lint:py": "ruff check src/ tests/",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.0",
+    "inquirer": "^8.2.6",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.26.0"
   }

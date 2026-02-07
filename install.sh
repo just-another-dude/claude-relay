@@ -100,49 +100,11 @@ if [[ ! -f .env ]]; then
     echo
     echo -e "${BOLD}Setting up configuration...${NC}"
     cp .env.example .env
-
-    echo
-    echo -e "${BLUE}Configuration options:${NC}"
-    echo "1. Group mode (recommended) - Control from a WhatsApp group"
-    echo "2. Self-chat mode - Control by messaging yourself"
-    echo
-    read -p "Choose mode (1/2): " -n 1 -r MODE
-    echo
-
-    if [[ "$MODE" == "1" ]]; then
-        echo
-        echo "To find your Group ID:"
-        echo "  1. Start the relay: npm start"
-        echo "  2. Send /groupid in your WhatsApp group"
-        echo "  3. Copy the ID (looks like: 120363424984613855@g.us)"
-        echo
-        read -p "Enter Group ID (or press Enter to set later): " GROUP_ID
-        read -p "Enter your phone number (no + or spaces, e.g., 1234567890): " PHONE
-
-        if [[ -n "$GROUP_ID" ]]; then
-            sed -i.bak "s/^ALLOWED_GROUP_ID=.*/ALLOWED_GROUP_ID=$GROUP_ID/" .env
-        fi
-        if [[ -n "$PHONE" ]]; then
-            sed -i.bak "s/^ALLOWED_NUMBER=.*/ALLOWED_NUMBER=$PHONE/" .env
-        fi
-        rm -f .env.bak
-    fi
-
-    echo
-    read -p "Enter Anthropic API key (for /ask and supervisor mode, or Enter to skip): " API_KEY
-    if [[ -n "$API_KEY" ]]; then
-        sed -i.bak "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$API_KEY/" .env
-        # Enable supervisor mode by default if API key provided
-        sed -i.bak "s/^SUPERVISOR_ENABLED=.*/SUPERVISOR_ENABLED=true/" .env
-        rm -f .env.bak
-    fi
-
-    echo
-    echo -e "${GREEN}Configuration saved to .env${NC}"
-    echo "You can edit it later: nano .env"
+    node src/setup.js
 else
     echo
     echo -e "${YELLOW}.env already exists, skipping configuration${NC}"
+    echo "Run 'npm run setup' to reconfigure"
 fi
 
 # Offer to install as service
