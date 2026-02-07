@@ -187,6 +187,7 @@ AUDIT_LOG_PATH=./logs/audit.log
 | **Linux** (Other distros) | Fully supported | Use your package manager |
 | **macOS** | Supported | Install deps via Homebrew |
 | **Windows (WSL)** | Supported | Run inside WSL2 ([setup guide](#windows-wsl-setup)) |
+| **Docker** | Supported | Any platform with Docker ([setup below](#with-docker)) |
 | **Windows (Native)** | Not supported | tmux not available natively |
 
 ### Windows (WSL) Setup
@@ -284,7 +285,33 @@ tail -f logs/launchd.log                    # view logs
 
 To uninstall: `./launchd/uninstall.sh`
 
-> **Note:** Run `npm start` manually first to scan the QR code. After WhatsApp is authenticated, you can switch to background service.
+### With Docker
+
+1. Configure your `.env`:
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+
+2. First run — scan the QR code:
+   ```bash
+   docker compose run --rm relay
+   ```
+
+3. Background mode (after QR is scanned):
+   ```bash
+   docker compose up -d
+   docker compose logs -f relay   # view logs
+   ```
+
+By default, Claude Code operates in `./workspace`. Point it elsewhere:
+```bash
+HOST_WORKSPACE=~/projects docker compose up -d
+```
+
+After pulling updates: `docker compose up -d --build`. WhatsApp session and logs persist across rebuilds.
+
+> **Note:** Run `npm start` (or `docker compose run --rm relay`) manually first to scan the QR code. After WhatsApp is authenticated, you can switch to background service.
 
 ## Security
 
@@ -369,6 +396,7 @@ npm run setup         # Re-run setup wizard
 - [x] Interactive setup wizard
 - [x] Systemd + launchd services
 - [x] macOS and Windows (WSL) support
+- [x] Docker container support
 - [ ] File/image sharing
 - [ ] Multiple conversation threads
 - [ ] Rate limiting

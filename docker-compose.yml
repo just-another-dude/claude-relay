@@ -1,0 +1,25 @@
+services:
+  relay:
+    build: .
+    container_name: claude-relay
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SUPERVISOR_HISTORY_PATH=/app/data/supervisor-history.json
+      - CLAUDE_WORKSPACE=/home/relay/claude-workspace
+    volumes:
+      - wwebjs-auth:/app/.wwebjs_auth
+      - relay-logs:/app/logs
+      - relay-data:/app/data
+      - ${HOST_WORKSPACE:-./workspace}:/home/relay/claude-workspace
+    shm_size: '256m'
+    security_opt:
+      - no-new-privileges:true
+    stdin_open: true
+    tty: true
+
+volumes:
+  wwebjs-auth:
+  relay-logs:
+  relay-data:
