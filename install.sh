@@ -5,6 +5,14 @@
 #
 set -e
 
+# Parse flags
+RECONFIGURE=false
+for arg in "$@"; do
+    case "$arg" in
+        --reconfigure) RECONFIGURE=true ;;
+    esac
+done
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -96,15 +104,14 @@ echo -e "${BOLD}Installing npm dependencies...${NC}"
 npm install
 
 # Setup .env file
-if [[ ! -f .env ]]; then
+if [[ ! -f .env ]] || [[ "$RECONFIGURE" == true ]]; then
     echo
     echo -e "${BOLD}Setting up configuration...${NC}"
-    cp .env.example .env
     node src/setup.js
 else
     echo
     echo -e "${YELLOW}.env already exists, skipping configuration${NC}"
-    echo "Run 'npm run setup' to reconfigure"
+    echo "  To reconfigure: npm run setup  or  ./install.sh --reconfigure"
 fi
 
 # Offer to install as service
