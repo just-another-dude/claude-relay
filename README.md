@@ -52,6 +52,8 @@ The installer checks prerequisites, installs dependencies, and launches an inter
 > - **Linux:** `sudo apt install nodejs npm python3 tmux`
 > - **macOS:** `brew install node python tmux`
 > - **Then:** `npm install -g @anthropic-ai/claude-code`
+>
+> **Windows:** Run inside WSL2. See [Windows setup guide](#windows-wsl-setup) below.
 
 After installation, start the relay and scan the QR code with WhatsApp (**Linked Devices > Link a Device**):
 
@@ -192,9 +194,6 @@ AUDIT_LOG_PATH=./logs/audit.log
 
 ### Windows (WSL) Setup
 
-<details>
-<summary>Click to expand WSL setup steps</summary>
-
 #### Prerequisites
 
 1. **Install WSL2** (run in PowerShell as Administrator):
@@ -233,8 +232,6 @@ The installer automatically detects WSL and shows relevant tips.
   tmux new -d -s relay 'npm start'
   ```
 - **Autostart:** WSL doesn't use systemd by default. Use tmux or [enable systemd in WSL](https://learn.microsoft.com/en-us/windows/wsl/systemd) if you want the service to start automatically
-
-</details>
 
 ### Manual Installation
 
